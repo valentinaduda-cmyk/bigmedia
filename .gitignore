@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# real client data — don't commit master lists or their outputs
+data/in/*
+data/out/*
+!data/in/.gitkeep
+!data/out/.gitkeep
