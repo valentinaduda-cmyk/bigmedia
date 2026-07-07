@@ -1,8 +1,20 @@
 # bigmedia
 
-Excel automation for media-master workflows: sorting clip lists by source,
-deduping, and (soon) timecode-based calculations. Built to be driven by
-Claude Code — see `CLAUDE.md` for the conventions it follows in this repo.
+Excel sheet data processing tool for KM Records' BigMedia workflow. Takes a
+media-master clip list (`.xlsx`) and automates the recurring spreadsheet
+work around it:
+
+- **sort** — classify every clip by source (AP, Getty, Reuters,
+  Shutterstock, Artlist, in-house GFX, Camera Footage, BBC, or a "3rd
+  parties" fallback) into separate sheets
+- **dedupe** — split a list into deduped rows + a "Duplicates" sheet, so
+  nothing disappears silently
+- **group** — second pass over a sorted workbook: groups repeat
+  occurrences of the same clip together and totals their duration
+  (frame/timecode-accurate)
+
+Currently a local CLI, run by hand or via Claude Code (see `CLAUDE.md` for
+the conventions this repo follows).
 
 ## Setup
 
@@ -20,11 +32,25 @@ data), then:
 ```bash
 bigmedia sort data/in/EP21_master.xlsx -o data/out/EP21_sorted.xlsx
 bigmedia dedupe data/in/EP21_master.xlsx -o data/out/EP21_deduped.xlsx
+bigmedia group data/out/EP21_sorted.xlsx -o data/out/EP21_grouped.xlsx
 ```
 
-Both default to `<input>_sorted.xlsx` / `<input>_deduped.xlsx` next to the
-input file if `-o` is omitted. Use `--name-column` if a workbook's filename
-column isn't called "Clip Name".
+All three default to `<input>_sorted.xlsx` / `<input>_deduped.xlsx` /
+`<input>_grouped.xlsx` next to the input file if `-o` is omitted. Use
+`--name-column` if a workbook's filename column isn't called "Clip Name";
+`group` also takes `--duration-column` (default "Clip Duration") and
+`--fps` (default 25).
+
+`<input>` can also be a folder — every `.xlsx` file in it gets processed,
+each writing its own `<name>_sorted.xlsx` / `<name>_deduped.xlsx` /
+`<name>_grouped.xlsx`:
+
+```bash
+bigmedia sort data/in -o data/out
+```
+
+If `-o` is omitted for a folder input, outputs are written alongside each
+input file instead.
 
 ## Running tests
 
@@ -41,13 +67,15 @@ for the reasoning behind each rule.
 
 ```
 bigmedia/
-  cli.py             single entrypoint, one subcommand per operation
-  classify.py         sorting rules — the file you'll touch most often
-  sort_workbook.py     "sort" command logic
-  dedupe.py             "dedupe" command logic
-  timecode.py            frame/timecode conversions (library, not wired to
-                           a command yet — see its docstring)
-  xlsx_utils.py            shared openpyxl helpers (styling, sheet copying)
+  cli.py               single entrypoint, one subcommand per operation
+  classify.py          sorting rules — the file you'll touch most often
+  sort_workbook.py      "sort" command logic
+  dedupe.py               "dedupe" command logic
+  group_duplicates.py       "group" command logic
+  timecode.py                 frame/timecode conversions (shared helper,
+                                used by group_duplicates)
+  xlsx_utils.py                  shared openpyxl helpers (styling, sheet
+                                   copying)
 tests/                      pytest suite + a synthetic fixture generator
 data/in/, data/out/          working directories, gitignored
 ```

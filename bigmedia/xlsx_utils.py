@@ -6,7 +6,29 @@ command (report generation, QC checks, ...) don't each reinvent "copy this
 sheet with its styling" from scratch.
 """
 import copy
+from pathlib import Path
 from openpyxl.utils import get_column_letter
+
+
+def iter_xlsx_files(path, exclude_suffix=None):
+    """Path objects for the .xlsx file(s) at `path`. If `path` is a folder,
+    every .xlsx file directly inside it is included, except Excel's own
+    "~$foo.xlsx" lock files for currently-open workbooks. If `exclude_suffix`
+    is given (e.g. "grouped"), files whose stem ends with "_<exclude_suffix>"
+    are also skipped -- pass the current command's own output suffix so a
+    batch command re-run on the same folder doesn't reprocess its own prior
+    output every time (which would otherwise snowball file count on each
+    run: "x.xlsx" -> "x_grouped.xlsx" -> "x_grouped_grouped.xlsx" -> ...).
+    Other stages' suffixes (e.g. "_sorted" files being fed into "group") are
+    legitimate input and must NOT be filtered out. If `path` is a single
+    file, it's returned as a one-item list unfiltered."""
+    p = Path(path)
+    if p.is_dir():
+        files = (f for f in p.glob("*.xlsx") if not f.name.startswith("~$"))
+        if exclude_suffix:
+            files = (f for f in files if not f.stem.endswith(f"_{exclude_suffix}"))
+        return sorted(files)
+    return [p]
 
 
 def find_column(ws, header_name: str) -> int:
@@ -16,6 +38,18 @@ def find_column(ws, header_name: str) -> int:
         if ws.cell(row=1, column=c).value == header_name:
             return c
     raise ValueError(f"Column {header_name!r} not found in header row")
+
+
+def find_column_any(ws, header_names) -> int:
+    """Like find_column, but tries each name in header_names in order and
+    returns the first match. Needed because real delivery files aren't
+    consistent about column naming (e.g. some use "Name", others "Clip
+    Name" for the same data). Raises ValueError if none match."""
+    for header_name in header_names:
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(row=1, column=c).value == header_name:
+                return c
+    raise ValueError(f"None of {list(header_names)!r} found in header row")
 
 
 def capture_header_template(ws):

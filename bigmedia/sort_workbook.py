@@ -1,12 +1,16 @@
 """
-Sort a media master list into per-source sheets, plus an untouched backup.
+Sort a media master list into per-source sheets, plus a backup.
 
 Output layout:
-  - "Worksheet"        exact, unmodified copy of the input (backup)
+  - "Worksheet"        copy of the input, with "Source Reel Name" filled in
+                        per row to whichever category that row was sorted to
   - one sheet per category in CATEGORY_ORDER, e.g. "AP", "Getty Videos", ...
+                        each with its own "Source Reel Name" column filled
+                        with that sheet's own category name
 
 The name column defaults to "Clip Name" — pass name_column= to override for
-a workbook that uses a different header.
+a workbook that uses a different header. The workbook is expected to already
+have a "Source Reel Name" column; its existing values are overwritten.
 """
 import copy
 from openpyxl import load_workbook, Workbook
@@ -39,8 +43,10 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
     fill_odd = copy.copy(ws_src.cell(row=3, column=2).fill)
 
     name_col_idx = find_column(ws_src, name_column)
+    source_col_idx = find_column(ws_src, "Source Reel Name")
 
     rows_by_cat = {c: [] for c in category_order}
+    row_category = {}
     for r in range(2, max_row + 1):
         name = ws_src.cell(row=r, column=name_col_idx).value
         if name is None or str(name).strip() == "":
@@ -48,6 +54,7 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
         cat = classify(name)
         rows_by_cat.setdefault(cat, [])
         rows_by_cat[cat].append(r)
+        row_category[r] = cat
 
     wb_out = Workbook()
     wb_out.remove(wb_out.active)
@@ -55,6 +62,8 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
     # "Worksheet" backup tab always goes first.
     ws_backup = wb_out.create_sheet(title="Worksheet")
     copy_sheet_verbatim(ws_src, ws_backup, max_row, max_col)
+    for r, cat in row_category.items():
+        ws_backup.cell(row=r, column=source_col_idx, value=cat)
 
     for cat in category_order:
         ws_out = wb_out.create_sheet(title=cat[:31])
@@ -63,6 +72,7 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
         for out_r, src_r in enumerate(rows_by_cat.get(cat, []), start=2):
             fill = fill_even if out_r % 2 == 0 else fill_odd
             values = [ws_src.cell(row=src_r, column=c).value for c in range(1, max_col + 1)]
+            values[source_col_idx - 1] = cat
             write_data_row(ws_out, out_r, values, col_font, col_numfmt, fill)
 
         for col_letter, width in col_widths.items():

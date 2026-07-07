@@ -2,7 +2,7 @@
 
 This repo automates recurring Excel work for KM Records' BigMedia
 workflow: sorting media-master clip lists by source (AP, Getty, Reuters,
-Shutterstock, Artlist, in-house Graphics, Camera Footage, BBC, and a
+Shutterstock, Artlist, in-house GFX, Camera Footage, BBC, and a
 "3rd parties" fallback), deduping, and eventually timecode-based
 calculations. It replaced a set of loose one-off scripts that had no
 tests and no history of *why* each rule existed.
@@ -42,9 +42,15 @@ each one encodes a real delivery someone manually confirmed.
   module with no I/O in it. openpyxl plumbing lives in `xlsx_utils.py` and
   is shared across commands — don't reimplement "copy this sheet's
   styling" inline again.
-- Every workbook-producing command writes a `"Worksheet"` sheet first: an
-  exact, unmodified copy of the input, as a backup. Preserve this pattern
-  in new commands unless explicitly told otherwise.
+- Every workbook-producing command writes a `"Worksheet"` sheet first: a
+  copy of the input, as a backup. Preserve this pattern in new commands
+  unless explicitly told otherwise.
+- The input is expected to already have a "Source Reel Name" column. Every
+  output sheet (including the "Worksheet" backup) overwrites that column
+  per row with the name of whichever sheet the row ended up on — e.g. rows
+  sorted into "AP" get "AP", rows kept by dedupe get "Deduped". This means
+  "Worksheet" is no longer byte-identical to the input; only that one
+  column differs.
 - CLI commands are thin wrappers in `cli.py` around a plain function
   (`sort_workbook(src, out, ...)`, `dedupe_workbook(src, out, ...)`) that
   returns a small dict of counts. Follow this shape for new operations so
@@ -65,7 +71,7 @@ each one encodes a real delivery someone manually confirmed.
   checked after the other two.
 - **Artlist**: `_Artlist_` anywhere in the name; checked before AP since
   Artlist names often start with a bare digit id.
-- **Graphics**: two conventions — legacy `704x_...` job-code block, and
+- **GFX**: two conventions — legacy `704x_...` job-code block, and
   newer `<3-4 digits>_..._TXLS.mov/mp4` episode numbering.
 - **Camera Footage**: raw camera formats (`[A-Z]###C###_`, `DJI`,
   `P#######.MOV`) plus `<3-4 digits>_<digits>.MXF`.
@@ -74,3 +80,8 @@ each one encodes a real delivery someone manually confirmed.
 When in doubt about a new pattern's edge cases, ask rather than guessing —
 false positives here (e.g. treating a generic file as AP) are worse than
 leaving something in "3rd parties" for manual review.
+
+## Web UI (planned)
+
+CLI-only today; a Web UI for the internal team (shared server) is planned
+next. When wireframing/quicksketching that UI, use Excalidraw.
