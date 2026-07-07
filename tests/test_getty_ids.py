@@ -19,6 +19,7 @@ CASES = [
     ("GETTYIMAGES-91953597.MOV", "91953597"),
     ("GettyImages-1001500162.mov", "1001500162"),
     ("GettyImages-2205665616_Apple_ProRes_422.mov", "2205665616"),
+    ("GettyImages-2205665616_Apple_ProRes_422.jpg", "2205665616"),
     ("GettyImages-mr_00108323.mov", "00108323"),
     ("GettyImages-1344-77.mov", "1344-77"),
     ("GettyImages-1B02673_0003.mov", "1B02673_0003"),

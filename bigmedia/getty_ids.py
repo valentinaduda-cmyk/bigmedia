@@ -34,7 +34,7 @@ from .xlsx_utils import find_column, iter_xlsx_files
 
 _GETTY_PREFIX_RE = re.compile(r'^GettyImages-', re.I)
 _MR_TAG_RE = re.compile(r'^mr_', re.I)
-_EXT_RE = re.compile(r'\.(mov|mp4|jpg|jpeg|png|gif|tiff|tif)\b', re.I)
+_EXT_RE = re.compile(r'\.(mov|mp4|jpg)\b', re.I)
 _KOPIE_SUFFIX_RE = re.compile(r'\s*\(kopie\)\s*$', re.I)
 
 
@@ -45,7 +45,7 @@ def extract_getty_id(name: str) -> str:
       - strip a leading "GettyImages-"/"GETTYIMAGES-" prefix
       - strip a leading "mr_" tag right after that prefix (Getty metadata,
         not part of the id) — e.g. "mr_00108323.mov" -> "00108323"
-      - if a .mov/.mp4 extension appears anywhere, cut the string at the
+      - if a .mov/.mp4/.jpg extension appears anywhere, cut the string at the
         start of that extension, dropping it and everything after it
         (including trailing " 25"-style suffixes). Within what's left,
         drop a trailing chain of "_word" suffixes (e.g. "_Apple_ProRes_422",
