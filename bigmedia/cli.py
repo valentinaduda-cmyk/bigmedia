@@ -16,11 +16,12 @@ named after it (e.g. "EP21_master.xlsx" -> "EP21_master_sorted.xlsx").
 sheets it groups duplicate clips together, adds Total Duration/Seconds
 columns, and appends a totals summary. Other sheets pass through untouched.
 
-"getty-ids" reads the "Getty videos" sheet of every input workbook, keeps
-only unique clips with a total "Seconds" duration >= 5 (override with
---min-seconds), extracts each clip's Getty id from its filename, and
-writes ONE new report
-workbook with one Track/Clip name block per input file, side by side.
+"getty-ids" reads the "Getty videos" and "Getty pics" sheets of every
+input workbook (customizable via --sheet/--stills-sheet), keeps only
+unique clips with total duration >= --min-seconds, extracts each clip's
+Getty id from its filename, and writes one Customer Declaration Form-
+styled report (--project-name is required; --production-company,
+--broadcaster, --rights fill the rest of the form's header).
 
 Add new operations as their own subcommand here as they come up, rather
 than as separate one-off scripts — that's the whole point of this file.
@@ -105,13 +106,16 @@ def cmd_getty_ids(args):
         out_path = _default_output(input_path, "getty_ids")
 
     counts = build_getty_id_report(
-        str(input_path), out_path,
-        sheet_name=args.sheet, name_column=args.name_column,
-        seconds_column=args.seconds_column, min_seconds=args.min_seconds,
+        str(input_path), out_path, args.project_name,
+        sheet_name=args.sheet, stills_sheet_name=args.stills_sheet,
+        name_column=args.name_column, seconds_column=args.seconds_column,
+        min_seconds=args.min_seconds,
+        production_company=args.production_company,
+        broadcaster=args.broadcaster, rights=args.rights,
     )
     print(f"Wrote {out_path}")
     for name, n in counts.items():
-        print(f"  {name}: {n} ids")
+        print(f"  {name}: {n['video']} video, {n['stills']} stills")
 
 
 def build_parser():
@@ -139,10 +143,15 @@ def build_parser():
     p_group.add_argument("--sheets", help='Comma-separated sheet names to group (default: "AP,Getty Videos,Getty Stills,Reuters,Shutterstock,BBC", matched case-insensitively). Use this when a file names its sheets differently, e.g. --sheets "AP,Getty videos,Getty pics,Reuters,Shutterstock"')
     p_group.set_defaults(func=cmd_group)
 
-    p_getty = subparsers.add_parser("getty-ids", help="Extract Getty clip ids from several sorted workbooks into one report")
+    p_getty = subparsers.add_parser("getty-ids", help="Extract Getty clip ids from several sorted workbooks into a Customer Declaration Form report")
     p_getty.add_argument("input", help="Path to a folder of sorted .xlsx files (or a single file)")
     p_getty.add_argument("-o", "--output", help="Output report path (default: <input folder>/getty_ids.xlsx)")
-    p_getty.add_argument("--sheet", default="Getty videos", help='Sheet to read clip names from (default: "Getty videos")')
+    p_getty.add_argument("--project-name", required=True, help="Project Name for the form's header (required)")
+    p_getty.add_argument("--production-company", default="KM Record a.s./Big Media", help='Production Company for the form\'s header (default: "KM Record a.s./Big Media")')
+    p_getty.add_argument("--broadcaster", default="", help="Broadcaster for the form's header (default: blank)")
+    p_getty.add_argument("--rights", default="in perpetuity/worldwide/all media", help='Rights Requested for the form\'s header (default: "in perpetuity/worldwide/all media")')
+    p_getty.add_argument("--sheet", default="Getty videos", help='Sheet to read video clip names from (default: "Getty videos")')
+    p_getty.add_argument("--stills-sheet", default="Getty pics", help='Sheet to read stills clip names from (default: "Getty pics")')
     p_getty.add_argument("--name-column", default="Clip Name", help='Header of the filename column (default: "Clip Name")')
     p_getty.add_argument("--seconds-column", default="Seconds", help='Header of the total-duration-in-seconds column (default: "Seconds")')
     p_getty.add_argument("--min-seconds", type=float, default=5, help="Only include clips whose total duration is at least this many seconds (default: 5)")
