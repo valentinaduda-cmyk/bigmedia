@@ -1,13 +1,16 @@
 """
 Extract Getty clip ids from clip filenames and consolidate them from
-several already-sorted workbooks into one new report file, styled to match
-Getty's own "Customer Declaration Form" template so it can be pasted/sent
-back to Getty with no manual reformatting.
+several already-sorted workbooks into one Customer Declaration Form-styled
+report file. The form matches Getty's template so it can be pasted/sent back
+to Getty with no manual reformatting.
 
-Reads the "Getty videos" sheet of every input workbook, extracts each
-clip's Getty id from its filename (see extract_getty_id() for the exact
-rules), and writes one new workbook with one two-column block per input
-file, left to right in input order, separated by a blank spacer column:
+Writes a header section with Production Company, Project Name, Broadcaster,
+and Rights fields. For each input file, reads both the "Getty videos" and
+"Getty pics" sheets (customizable), extracts each clip's Getty id from its
+filename (see extract_getty_id() for the exact rules), and writes two
+adjacent 2-column blocks (Asset ID / Duration) per file: one for Video clips,
+one for Stills. Episodes appear left to right in input order, each pair of
+blocks followed by blank spacing before the next episode.
 
 Only UNIQUE clips with a total duration of 5+ seconds are included. Real
 delivery files (and our own `group` command's output) only populate the
@@ -17,12 +20,9 @@ and >= min_seconds" naturally selects one row per unique clip. An explicit
 id-based dedup is layered on top as a safety net in case a file doesn't
 follow that convention.
 
-    <episode title>                     <blank>   <episode title>
-    Getty Images Video                            Getty Images Video
-    Asset ID | Duration                            Asset ID | Duration
-    =COUNTA  | =SUM                                =COUNTA  | =SUM
-    <id>     | <seconds>                           <id>     | <seconds>
-    ...
+After the last episode's blocks, fixed gaps place two text boxes side-by-side:
+an "Instructions:" box explaining the form's usage, and an "Important Notes
+on Licensing:" box with Getty's licensing terms.
 """
 import re
 from pathlib import Path
