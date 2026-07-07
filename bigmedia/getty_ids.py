@@ -158,6 +158,53 @@ _BLOCK_FIRST_DATA_ROW = 11
 _INTRA_BLOCK_GAP = 1    # blank columns between a Video block and its Stills block
 _INTER_EPISODE_GAP = 2  # blank columns between one episode's Stills block and the next episode's Video block
 
+_BOX_GAP = 2       # blank columns between the last episode block and the Instructions box
+_BOX_INNER_GAP = 1  # blank columns between the Instructions box and the Notes box
+_INSTRUCTIONS_WIDTH = 6
+_NOTES_WIDTH = 8
+
+_BOX_ROW = 5
+_BOX_HEADER_ROWSPAN = 2
+_BOX_BODY_ROWSPAN = 26
+
+_BOX_HEADER_FONT = Font(name="Lato", size=15, bold=True, color="FF7030A0")
+_BOX_HEADER_ALIGN = Alignment(horizontal="left", vertical="center")
+_BOX_BODY_FONT = Font(name="Lato", size=11)
+_BOX_BODY_ALIGN = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+_INSTRUCTIONS_TEXT = (
+    "Please divide content into appropriate asset type.\n\n"
+    "Under asset ID, please enter the ID listed on the Getty Images website "
+    "for this item - this will either be a 'Creative #', 'Editorial #' for "
+    "stills or 'Clip #' for online video items. For offline items, your clip "
+    "ID should be entered here. \n\n"
+    "For your video items, under 'duration' please enter the number of "
+    "seconds used of this video within your final edit.\n\n"
+    "More content subcategories are in hidden columns, please only expand "
+    "if you need to declare BBC Sport content, NBC Premium or Standard OR "
+    "alternative Getty Images options.  "
+)
+
+_NOTES_TEXT = (
+    "Upon receipt of the Proposed Usage Declaration form, Getty Images will "
+    "check availability of all itemised content and shall inform Customer "
+    "as soon as reasonably practicable whether content is available for "
+    "license, i.e. after checking that content is still represented and "
+    "available for licensing by Getty Images, product specialist team will "
+    "update once confirmed. Availability of content is not guaranteed, "
+    "Customer shall not finalise the Production Title until Getty Images "
+    "has confirmed availability of licensing rights. Content shall be "
+    "deemed licensed upon Getty Images confirming it is available for "
+    "license in response to receiving a Proposed Usage Declaration.       \n"
+    "                                                                                                                                     "
+    "For all offline content, once the master material is supplied, the applicable\n"
+    "license fee and all technical charges are payable regardless of "
+    "whether the master material is used or not.\n"
+    "In addition, further approval and delivery mechanisms apply for all "
+    "offline BBC Motion Gallery, BBC Sport and NBC video collections, as "
+    "outlined in agreement contract."
+)
+
 
 def _write_header(ws, production_company, project_name, broadcaster, rights):
     title_cell = ws.cell(row=_FORM_TITLE_ROW, column=1, value="Customer Declaration Form")
@@ -225,6 +272,23 @@ def _write_block(ws, col, title, subtitle, rows):
     ws.column_dimensions[duration_letter].width = _DURATION_COL_WIDTH
 
 
+def _write_text_box(ws, col, width, header_text, body_text, header_border):
+    end_col = col + width - 1
+    header_row_end = _BOX_ROW + _BOX_HEADER_ROWSPAN - 1
+    header_cell = ws.cell(row=_BOX_ROW, column=col, value=header_text)
+    header_cell.font = _BOX_HEADER_FONT
+    header_cell.alignment = _BOX_HEADER_ALIGN
+    header_cell.border = header_border
+    ws.merge_cells(start_row=_BOX_ROW, start_column=col, end_row=header_row_end, end_column=end_col)
+
+    body_row = header_row_end + 1
+    body_row_end = body_row + _BOX_BODY_ROWSPAN - 1
+    body_cell = ws.cell(row=body_row, column=col, value=body_text)
+    body_cell.font = _BOX_BODY_FONT
+    body_cell.alignment = _BOX_BODY_ALIGN
+    ws.merge_cells(start_row=body_row, start_column=col, end_row=body_row_end, end_column=end_col)
+
+
 def build_getty_id_report(
     input_path,
     out_path,
@@ -262,6 +326,11 @@ def build_getty_id_report(
 
         last_used_col = stills_col + 1
         col = last_used_col + 1 + _INTER_EPISODE_GAP
+
+    box_start_col = last_used_col + 1 + _BOX_GAP
+    _write_text_box(ws_out, box_start_col, _INSTRUCTIONS_WIDTH, "Instructions:", _INSTRUCTIONS_TEXT, _DASHED_BOTTOM)
+    notes_start_col = box_start_col + _INSTRUCTIONS_WIDTH + _BOX_INNER_GAP
+    _write_text_box(ws_out, notes_start_col, _NOTES_WIDTH, "Important Notes on Licensing:", _NOTES_TEXT, _DOTTED_BOTTOM)
 
     ws_out.freeze_panes = f"A{_BLOCK_FIRST_DATA_ROW}"
     wb_out.save(out_path)

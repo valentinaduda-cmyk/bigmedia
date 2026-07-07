@@ -339,3 +339,69 @@ def test_build_getty_id_report_custom_stills_sheet_name(tmp_path):
         str(in_dir), str(out_path), project_name="X", stills_sheet_name="Getty Stills",
     )
     assert counts == {"EP1.xlsx": {"video": 1, "stills": 1}}
+
+
+_INSTRUCTIONS_TEXT_START = "Please divide content into appropriate asset type."
+_NOTES_TEXT_START = "Upon receipt of the Proposed Usage Declaration form"
+
+
+def test_build_getty_id_report_text_boxes_one_file(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(in_dir / "EP1.xlsx", rows=[("GettyImages-1001500162.mov", 6)])
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    # EP1 alone: video cols 1-2, stills cols 4-5, last_used_col=5.
+    # box_start = 5 + 1 + 2 (BOX_GAP) = 8 (H).
+    assert ws.cell(row=5, column=8).value == "Instructions:"
+    assert ws.cell(row=7, column=8).value.startswith(_INSTRUCTIONS_TEXT_START)
+    # notes_start = 8 + 6 (INSTR width) + 1 (inner gap) = 15 (O).
+    assert ws.cell(row=5, column=15).value == "Important Notes on Licensing:"
+    assert ws.cell(row=7, column=15).value.startswith(_NOTES_TEXT_START)
+
+
+def test_build_getty_id_report_text_boxes_shift_with_two_files(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(
+        in_dir / "EP1.xlsx",
+        rows=[("GettyImages-1000000001.mov", 6)],
+        stills_rows=[("GettyImages-2000000001.jpg", 5)],
+    )
+    _make_sorted_workbook(
+        in_dir / "EP2.xlsx",
+        rows=[("GettyImages-1000000002.mov", 6)],
+        stills_rows=[("GettyImages-2000000002.jpg", 5)],
+    )
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    # EP1+EP2: video 8-9, stills 11-12, last_used_col=12.
+    # box_start = 12 + 1 + 2 = 15 (O).
+    assert ws.cell(row=5, column=15).value == "Instructions:"
+    # notes_start = 15 + 6 + 1 = 22 (V).
+    assert ws.cell(row=5, column=22).value == "Important Notes on Licensing:"
+
+
+def test_build_getty_id_report_text_box_merge_ranges(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(in_dir / "EP1.xlsx", rows=[("GettyImages-1001500162.mov", 6)])
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    merged = {str(r) for r in ws.merged_cells.ranges}
+    assert "H5:M6" in merged    # Instructions header, 6 cols wide, 2 rows tall
+    assert "H7:M32" in merged   # Instructions body, 6 cols wide, 26 rows tall
+    assert "O5:V6" in merged    # Notes header, 8 cols wide, 2 rows tall
+    assert "O7:V32" in merged   # Notes body, 8 cols wide, 26 rows tall
