@@ -34,7 +34,7 @@ from .xlsx_utils import find_column, iter_xlsx_files
 
 _GETTY_PREFIX_RE = re.compile(r'^GettyImages-', re.I)
 _MR_TAG_RE = re.compile(r'^mr_', re.I)
-_EXT_RE = re.compile(r'\.(mov|mp4)\b', re.I)
+_EXT_RE = re.compile(r'\.(mov|mp4|jpg|jpeg|png|gif|tiff|tif)\b', re.I)
 _KOPIE_SUFFIX_RE = re.compile(r'\s*\(kopie\)\s*$', re.I)
 
 
@@ -155,6 +155,9 @@ _BLOCK_HEADER_ROW = 9
 _BLOCK_FORMULA_ROW = 10
 _BLOCK_FIRST_DATA_ROW = 11
 
+_INTRA_BLOCK_GAP = 1    # blank columns between a Video block and its Stills block
+_INTER_EPISODE_GAP = 2  # blank columns between one episode's Stills block and the next episode's Video block
+
 
 def _write_header(ws, production_company, project_name, broadcaster, rights):
     title_cell = ws.cell(row=_FORM_TITLE_ROW, column=1, value="Customer Declaration Form")
@@ -227,6 +230,7 @@ def build_getty_id_report(
     out_path,
     project_name,
     sheet_name="Getty videos",
+    stills_sheet_name="Getty pics",
     name_column="Clip Name",
     seconds_column="Seconds",
     min_seconds=5,
@@ -245,13 +249,19 @@ def build_getty_id_report(
 
     counts = {}
     col = 1
+    last_used_col = 0
     for file_path in files:
-        rows = _read_getty_ids(file_path, sheet_name, name_column, seconds_column, min_seconds)
-        counts[file_path.name] = {"video": len(rows), "stills": 0}
+        video_rows = _read_getty_ids(file_path, sheet_name, name_column, seconds_column, min_seconds)
+        stills_rows = _read_getty_ids(file_path, stills_sheet_name, name_column, seconds_column, min_seconds)
+        counts[file_path.name] = {"video": len(video_rows), "stills": len(stills_rows)}
 
         title = clean_episode_title(file_path.name)
-        _write_block(ws_out, col, title, "Getty Images Video", rows)
-        col += 3  # two data columns + one blank spacer column
+        _write_block(ws_out, col, title, "Getty Images Video", video_rows)
+        stills_col = col + 2 + _INTRA_BLOCK_GAP
+        _write_block(ws_out, stills_col, title, "Getty Images Stills", stills_rows)
+
+        last_used_col = stills_col + 1
+        col = last_used_col + 1 + _INTER_EPISODE_GAP
 
     ws_out.freeze_panes = f"A{_BLOCK_FIRST_DATA_ROW}"
     wb_out.save(out_path)

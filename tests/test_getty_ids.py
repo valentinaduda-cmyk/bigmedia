@@ -217,7 +217,7 @@ def test_build_getty_id_report_falls_back_to_name_column(tmp_path):
     wb_out = load_workbook(out_path)
     ws_out = wb_out["Getty IDs"]
     assert ws_out.cell(row=11, column=1).value == "1001500162"
-    assert ws_out.cell(row=11, column=4).value == "1344-77"
+    assert ws_out.cell(row=11, column=8).value == "1344-77"
 
 
 def test_build_getty_id_report_ignores_blank_names(tmp_path):
@@ -235,3 +235,106 @@ def test_build_getty_id_report_ignores_blank_names(tmp_path):
     out_path = tmp_path / "getty_ids.xlsx"
     counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
     assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
+
+
+def test_build_getty_id_report_reads_stills_sheet(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(
+        in_dir / "EP1.xlsx",
+        rows=[("GettyImages-1001500162.mov", 6)],
+        stills_rows=[("GettyImages-2001500162.jpg", 5)],
+    )
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 1}}
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+
+    # Video block: columns 1-2 (A-B).
+    assert ws.cell(row=7, column=1).value == "EP1"
+    assert ws.cell(row=8, column=1).value == "Getty Images Video"
+    assert ws.cell(row=11, column=1).value == "1001500162"
+    assert ws.cell(row=11, column=2).value == 6
+
+    # One blank spacer column (3 / C) between video and stills.
+    assert ws.cell(row=7, column=3).value is None
+
+    # Stills block: columns 4-5 (D-E).
+    assert ws.cell(row=7, column=4).value == "EP1"
+    assert ws.cell(row=8, column=4).value == "Getty Images Stills"
+    assert ws.cell(row=9, column=4).value == "Asset ID"
+    assert ws.cell(row=9, column=5).value == "Duration"
+    assert ws.cell(row=10, column=4).value == "=COUNTA(D11:D11)"
+    assert ws.cell(row=10, column=5).value == "=SUM(E11:E11)"
+    assert ws.cell(row=11, column=4).value == "2001500162"
+    assert ws.cell(row=11, column=5).value == 5
+
+
+def test_build_getty_id_report_missing_stills_sheet_writes_empty_block(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(in_dir / "EP1.xlsx", rows=[("GettyImages-1001500162.mov", 6)])
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    assert ws.cell(row=8, column=4).value == "Getty Images Stills"
+    assert ws.cell(row=10, column=4).value == "=COUNTA(D11:D11)"
+    assert ws.cell(row=11, column=4).value is None
+
+
+def test_build_getty_id_report_two_episodes_video_and_stills_column_math(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(
+        in_dir / "EP1.xlsx",
+        rows=[("GettyImages-1000000001.mov", 6)],
+        stills_rows=[("GettyImages-2000000001.jpg", 5)],
+    )
+    _make_sorted_workbook(
+        in_dir / "EP2.xlsx",
+        rows=[("GettyImages-1000000002.mov", 6)],
+        stills_rows=[("GettyImages-2000000002.jpg", 5)],
+    )
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    # EP1: video cols 1-2, stills cols 4-5. EP2: video cols 8-9, stills cols 11-12.
+    assert ws.cell(row=11, column=1).value == "1000000001"
+    assert ws.cell(row=11, column=4).value == "2000000001"
+    assert ws.cell(row=11, column=8).value == "1000000002"
+    assert ws.cell(row=11, column=11).value == "2000000002"
+
+    # Two blank columns (6, 7 / F, G) between EP1's stills block and EP2's video block.
+    assert ws.cell(row=7, column=6).value is None
+    assert ws.cell(row=7, column=7).value is None
+    assert ws.cell(row=7, column=8).value == "EP2"
+
+
+def test_build_getty_id_report_custom_stills_sheet_name(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    wb = Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet(title="Getty videos")
+    ws.append(["Track", "Clip Name", "Seconds"])
+    ws.append(["V1", "GettyImages-1001500162.mov", 6])
+    ws_stills = wb.create_sheet(title="Getty Stills")  # non-default name
+    ws_stills.append(["Track", "Clip Name", "Seconds"])
+    ws_stills.append(["V1", "GettyImages-2001500162.jpg", 5])
+    wb.save(in_dir / "EP1.xlsx")
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(
+        str(in_dir), str(out_path), project_name="X", stills_sheet_name="Getty Stills",
+    )
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 1}}
