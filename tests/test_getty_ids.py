@@ -49,20 +49,65 @@ def test_clean_episode_title(filename, expected):
     assert clean_episode_title(filename) == expected
 
 
-def _make_sorted_workbook(path, rows):
-    """rows: list of (name, seconds) tuples. `seconds` mirrors the real
-    convention: it's blank (None) on every row of a duplicate run except
-    the last, which carries that clip's total-duration-in-seconds."""
+def _make_sorted_workbook(path, rows, stills_rows=None):
+    """rows/stills_rows: list of (name, seconds) tuples. `seconds` mirrors
+    the real convention: it's blank (None) on every row of a duplicate run
+    except the last, which carries that clip's total-duration-in-seconds."""
     wb = Workbook()
     wb.remove(wb.active)
     ws = wb.create_sheet(title="Getty videos")
     ws.append(["Track", "Clip Name", "Seconds"])
     for name, seconds in rows:
         ws.append(["V1", name, seconds])
+    if stills_rows is not None:
+        ws_stills = wb.create_sheet(title="Getty pics")
+        ws_stills.append(["Track", "Clip Name", "Seconds"])
+        for name, seconds in stills_rows:
+            ws_stills.append(["V1", name, seconds])
     ws2 = wb.create_sheet(title="AP")  # not a Getty sheet, must be ignored
     ws2.append(["Track", "Clip Name", "Seconds"])
     ws2.append(["V1", "BM1234_something.mxf", 10])
     wb.save(path)
+
+
+def test_build_getty_id_report_writes_header_fields(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(in_dir / "EP1.xlsx", [("GettyImages-1001500162.mov", 6)])
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    build_getty_id_report(
+        str(in_dir), str(out_path), project_name="Top 10 Secrets of Technology",
+        production_company="KM Record a.s./Big Media", broadcaster="Discovery",
+        rights="in perpetuity/worldwide/all media",
+    )
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    assert ws.cell(row=1, column=1).value == "Customer Declaration Form"
+    assert ws.cell(row=2, column=1).value == "Production Company:"
+    assert ws.cell(row=2, column=2).value == "KM Record a.s./Big Media"
+    assert ws.cell(row=3, column=1).value == "Project Name:"
+    assert ws.cell(row=3, column=2).value == "Top 10 Secrets of Technology"
+    assert ws.cell(row=4, column=1).value == "Broadcaster:"
+    assert ws.cell(row=4, column=2).value == "Discovery"
+    assert ws.cell(row=5, column=1).value == "Rights Requested:"
+    assert ws.cell(row=5, column=2).value == "in perpetuity/worldwide/all media"
+
+
+def test_build_getty_id_report_header_field_defaults(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(in_dir / "EP1.xlsx", [("GettyImages-1001500162.mov", 6)])
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    assert ws.cell(row=2, column=2).value == "KM Record a.s./Big Media"
+    assert ws.cell(row=4, column=2).value is None  # openpyxl normalizes empty strings to None
+    assert ws.cell(row=5, column=2).value == "in perpetuity/worldwide/all media"
 
 
 def test_build_getty_id_report_consolidates_multiple_files(tmp_path):
@@ -77,37 +122,27 @@ def test_build_getty_id_report_consolidates_multiple_files(tmp_path):
     ])
 
     out_path = tmp_path / "getty_ids.xlsx"
-    counts = build_getty_id_report(str(in_dir), str(out_path))
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
 
-    assert counts == {"EP1_master_sorted.xlsx": 2, "EP2_master_sorted.xlsx": 1}
+    assert counts == {
+        "EP1_master_sorted.xlsx": {"video": 2, "stills": 0},
+        "EP2_master_sorted.xlsx": {"video": 1, "stills": 0},
+    }
 
     wb = load_workbook(out_path)
     ws = wb["Getty IDs"]
 
     # First block: title, subtitle, Asset ID/Duration headers, formula row, then data.
-    assert ws.cell(row=1, column=1).value == "EP1_master_sorted"
-    assert ws.cell(row=2, column=1).value == "Getty Images Video"
-    assert ws.cell(row=3, column=1).value == "Asset ID"
-    assert ws.cell(row=3, column=2).value == "Duration"
-    assert ws.cell(row=4, column=1).value == "=COUNTA(A5:A6)"
-    assert ws.cell(row=4, column=2).value == "=SUM(B5:B6)"
-    assert ws.cell(row=5, column=1).value == "1001500162"
-    assert ws.cell(row=5, column=2).value == 6
-    assert ws.cell(row=6, column=1).value == "1344-77"
-    assert ws.cell(row=6, column=2).value == 5
-
-    # Column 3 is a blank spacer before the second block.
-    assert ws.cell(row=1, column=3).value is None
-    assert ws.cell(row=2, column=3).value is None
-    assert ws.cell(row=3, column=3).value is None
-
-    # Second block starts at column 4.
-    assert ws.cell(row=1, column=4).value == "EP2_master_sorted"
-    assert ws.cell(row=2, column=4).value == "Getty Images Video"
-    assert ws.cell(row=3, column=4).value == "Asset ID"
-    assert ws.cell(row=3, column=5).value == "Duration"
-    assert ws.cell(row=5, column=4).value == "00108323"
-    assert ws.cell(row=5, column=5).value == 7
+    assert ws.cell(row=7, column=1).value == "EP1_master_sorted"
+    assert ws.cell(row=8, column=1).value == "Getty Images Video"
+    assert ws.cell(row=9, column=1).value == "Asset ID"
+    assert ws.cell(row=9, column=2).value == "Duration"
+    assert ws.cell(row=10, column=1).value == "=COUNTA(A11:A12)"
+    assert ws.cell(row=10, column=2).value == "=SUM(B11:B12)"
+    assert ws.cell(row=11, column=1).value == "1001500162"
+    assert ws.cell(row=11, column=2).value == 6
+    assert ws.cell(row=12, column=1).value == "1344-77"
+    assert ws.cell(row=12, column=2).value == 5
 
 
 def test_build_getty_id_report_dedupes_and_filters_by_seconds(tmp_path):
@@ -122,15 +157,15 @@ def test_build_getty_id_report_dedupes_and_filters_by_seconds(tmp_path):
     ])
 
     out_path = tmp_path / "getty_ids.xlsx"
-    counts = build_getty_id_report(str(in_dir), str(out_path))
-    assert counts == {"EP1.xlsx": 2}
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 2, "stills": 0}}
 
     wb = load_workbook(out_path)
     ws = wb["Getty IDs"]
-    assert ws.cell(row=5, column=1).value == "2000000002"
-    assert ws.cell(row=5, column=2).value == 6
-    assert ws.cell(row=6, column=1).value == "3000000003"
-    assert ws.cell(row=6, column=2).value == 5
+    assert ws.cell(row=11, column=1).value == "2000000002"
+    assert ws.cell(row=11, column=2).value == 6
+    assert ws.cell(row=12, column=1).value == "3000000003"
+    assert ws.cell(row=12, column=2).value == 5
 
 
 def test_build_getty_id_report_skips_garbled_seconds_cells(tmp_path):
@@ -144,8 +179,8 @@ def test_build_getty_id_report_skips_garbled_seconds_cells(tmp_path):
     ])
 
     out_path = tmp_path / "getty_ids.xlsx"
-    counts = build_getty_id_report(str(in_dir), str(out_path))
-    assert counts == {"EP1.xlsx": 1}
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
 
 
 def test_build_getty_id_report_min_seconds_is_configurable(tmp_path):
@@ -154,8 +189,8 @@ def test_build_getty_id_report_min_seconds_is_configurable(tmp_path):
     _make_sorted_workbook(in_dir / "EP1.xlsx", [("GettyImages-1000000001.mov", 3)])
 
     out_path = tmp_path / "getty_ids.xlsx"
-    counts = build_getty_id_report(str(in_dir), str(out_path), min_seconds=0)
-    assert counts == {"EP1.xlsx": 1}
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X", min_seconds=0)
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
 
 
 def test_build_getty_id_report_falls_back_to_name_column(tmp_path):
@@ -173,13 +208,16 @@ def test_build_getty_id_report_falls_back_to_name_column(tmp_path):
     wb.save(in_dir / "EP2.xlsx")
 
     out_path = tmp_path / "getty_ids.xlsx"
-    counts = build_getty_id_report(str(in_dir), str(out_path))
-    assert counts == {"EP1.xlsx": 1, "EP2.xlsx": 1}
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {
+        "EP1.xlsx": {"video": 1, "stills": 0},
+        "EP2.xlsx": {"video": 1, "stills": 0},
+    }
 
     wb_out = load_workbook(out_path)
     ws_out = wb_out["Getty IDs"]
-    assert ws_out.cell(row=5, column=1).value == "1001500162"
-    assert ws_out.cell(row=5, column=4).value == "1344-77"
+    assert ws_out.cell(row=11, column=1).value == "1001500162"
+    assert ws_out.cell(row=11, column=4).value == "1344-77"
 
 
 def test_build_getty_id_report_ignores_blank_names(tmp_path):
@@ -195,5 +233,5 @@ def test_build_getty_id_report_ignores_blank_names(tmp_path):
     wb.save(path)
 
     out_path = tmp_path / "getty_ids.xlsx"
-    counts = build_getty_id_report(str(in_dir), str(out_path))
-    assert counts == {"EP1.xlsx": 1}
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}

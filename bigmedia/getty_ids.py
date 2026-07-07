@@ -131,22 +131,108 @@ _TITLE_FONT = Font(name="Lato", size=12, color="FF7030A0")
 _HEADER_FONT = Font(name="Lato", size=8)
 _FORMULA_FONT = Font(name="Lato", size=10)
 _CENTER = Alignment(horizontal="center")
+_CENTER_WRAP = Alignment(horizontal="center", wrap_text=True)
 _DASHED_BOTTOM = Border(bottom=Side(style="dashed"))
+_DOTTED_BOTTOM = Border(bottom=Side(style="dotted"))
 
-_TITLE_ROW = 1
-_SUBTITLE_ROW = 2
-_HEADER_ROW = 3
-_FORMULA_ROW = 4
-_FIRST_DATA_ROW = 5
+_FORM_TITLE_FONT = Font(name="Lato", size=20, bold=True, color="FF7030A0")
+_FIELD_LABEL_FONT = Font(name="Lato", size=11)
+_FIELD_VALUE_FONT = Font(name="Calibri", size=11)
+_FIELD_VALUE_ALIGN = Alignment(horizontal="center")
+
+_ASSET_COL_WIDTH = 20
+_DURATION_COL_WIDTH = 10
+
+_FORM_TITLE_ROW = 1
+_COMPANY_ROW = 2
+_PROJECT_ROW = 3
+_BROADCASTER_ROW = 4
+_RIGHTS_ROW = 5
+
+_BLOCK_TITLE_ROW = 7
+_BLOCK_SUBTITLE_ROW = 8
+_BLOCK_HEADER_ROW = 9
+_BLOCK_FORMULA_ROW = 10
+_BLOCK_FIRST_DATA_ROW = 11
+
+
+def _write_header(ws, production_company, project_name, broadcaster, rights):
+    title_cell = ws.cell(row=_FORM_TITLE_ROW, column=1, value="Customer Declaration Form")
+    title_cell.font = _FORM_TITLE_FONT
+
+    fields = [
+        (_COMPANY_ROW, "Production Company:", production_company),
+        (_PROJECT_ROW, "Project Name:", project_name),
+        (_BROADCASTER_ROW, "Broadcaster:", broadcaster),
+        (_RIGHTS_ROW, "Rights Requested:", rights),
+    ]
+    for row, label, value in fields:
+        label_cell = ws.cell(row=row, column=1, value=label)
+        label_cell.font = _FIELD_LABEL_FONT
+        value_cell = ws.cell(row=row, column=2, value=value)
+        value_cell.font = _FIELD_VALUE_FONT
+        value_cell.alignment = _FIELD_VALUE_ALIGN
+
+
+def _write_block(ws, col, title, subtitle, rows):
+    """Writes one 2-column Asset ID/Duration block starting at `col`.
+    `rows` is a list of (clip_id, seconds) tuples, same shape
+    _read_getty_ids() returns."""
+    asset_col, duration_col = col, col + 1
+    asset_letter = get_column_letter(asset_col)
+    duration_letter = get_column_letter(duration_col)
+
+    title_cell = ws.cell(row=_BLOCK_TITLE_ROW, column=asset_col, value=title)
+    title_cell.font = _TITLE_FONT
+    title_cell.alignment = _CENTER
+    ws.merge_cells(start_row=_BLOCK_TITLE_ROW, start_column=asset_col, end_row=_BLOCK_TITLE_ROW, end_column=duration_col)
+
+    subtitle_cell = ws.cell(row=_BLOCK_SUBTITLE_ROW, column=asset_col, value=subtitle)
+    subtitle_cell.font = _TITLE_FONT
+    subtitle_cell.alignment = _CENTER
+    ws.merge_cells(start_row=_BLOCK_SUBTITLE_ROW, start_column=asset_col, end_row=_BLOCK_SUBTITLE_ROW, end_column=duration_col)
+
+    for c, label in [(asset_col, "Asset ID"), (duration_col, "Duration")]:
+        cell = ws.cell(row=_BLOCK_HEADER_ROW, column=c, value=label)
+        cell.font = _HEADER_FONT
+        cell.alignment = _CENTER
+        cell.border = _DASHED_BOTTOM
+
+    last_data_row = _BLOCK_FIRST_DATA_ROW + len(rows) - 1 if rows else _BLOCK_FIRST_DATA_ROW
+    count_cell = ws.cell(
+        row=_BLOCK_FORMULA_ROW, column=asset_col,
+        value=f"=COUNTA({asset_letter}{_BLOCK_FIRST_DATA_ROW}:{asset_letter}{last_data_row})",
+    )
+    sum_cell = ws.cell(
+        row=_BLOCK_FORMULA_ROW, column=duration_col,
+        value=f"=SUM({duration_letter}{_BLOCK_FIRST_DATA_ROW}:{duration_letter}{last_data_row})",
+    )
+    for cell in (count_cell, sum_cell):
+        cell.font = _FORMULA_FONT
+        cell.alignment = _CENTER
+        cell.border = _DASHED_BOTTOM
+
+    for i, (clip_id, seconds) in enumerate(rows):
+        r = _BLOCK_FIRST_DATA_ROW + i
+        id_cell = ws.cell(row=r, column=asset_col, value=clip_id)
+        id_cell.alignment = _CENTER_WRAP
+        ws.cell(row=r, column=duration_col, value=seconds)
+
+    ws.column_dimensions[asset_letter].width = _ASSET_COL_WIDTH
+    ws.column_dimensions[duration_letter].width = _DURATION_COL_WIDTH
 
 
 def build_getty_id_report(
     input_path,
     out_path,
+    project_name,
     sheet_name="Getty videos",
     name_column="Clip Name",
     seconds_column="Seconds",
     min_seconds=5,
+    production_company="KM Record a.s./Big Media",
+    broadcaster="",
+    rights="in perpetuity/worldwide/all media",
 ):
     out_name = Path(out_path).name
     files = [f for f in iter_xlsx_files(input_path) if f.name != out_name]
@@ -155,56 +241,18 @@ def build_getty_id_report(
     wb_out.remove(wb_out.active)
     ws_out = wb_out.create_sheet(title="Getty IDs")
 
+    _write_header(ws_out, production_company, project_name, broadcaster, rights)
+
     counts = {}
     col = 1
     for file_path in files:
         rows = _read_getty_ids(file_path, sheet_name, name_column, seconds_column, min_seconds)
-        counts[file_path.name] = len(rows)
+        counts[file_path.name] = {"video": len(rows), "stills": 0}
 
-        asset_col, duration_col = col, col + 1
-        asset_letter = get_column_letter(asset_col)
-        duration_letter = get_column_letter(duration_col)
-
-        title_cell = ws_out.cell(row=_TITLE_ROW, column=asset_col, value=clean_episode_title(file_path.name))
-        title_cell.font = _TITLE_FONT
-        title_cell.alignment = _CENTER
-        ws_out.merge_cells(start_row=_TITLE_ROW, start_column=asset_col, end_row=_TITLE_ROW, end_column=duration_col)
-
-        subtitle_cell = ws_out.cell(row=_SUBTITLE_ROW, column=asset_col, value="Getty Images Video")
-        subtitle_cell.font = _TITLE_FONT
-        subtitle_cell.alignment = _CENTER
-        ws_out.merge_cells(start_row=_SUBTITLE_ROW, start_column=asset_col, end_row=_SUBTITLE_ROW, end_column=duration_col)
-
-        for c, label in [(asset_col, "Asset ID"), (duration_col, "Duration")]:
-            cell = ws_out.cell(row=_HEADER_ROW, column=c, value=label)
-            cell.font = _HEADER_FONT
-            cell.alignment = _CENTER
-            cell.border = _DASHED_BOTTOM
-
-        last_data_row = _FIRST_DATA_ROW + len(rows) - 1 if rows else _FIRST_DATA_ROW
-        count_cell = ws_out.cell(
-            row=_FORMULA_ROW, column=asset_col,
-            value=f"=COUNTA({asset_letter}{_FIRST_DATA_ROW}:{asset_letter}{last_data_row})",
-        )
-        sum_cell = ws_out.cell(
-            row=_FORMULA_ROW, column=duration_col,
-            value=f"=SUM({duration_letter}{_FIRST_DATA_ROW}:{duration_letter}{last_data_row})",
-        )
-        for cell in (count_cell, sum_cell):
-            cell.font = _FORMULA_FONT
-            cell.alignment = _CENTER
-            cell.border = _DASHED_BOTTOM
-
-        for i, (clip_id, seconds) in enumerate(rows):
-            r = _FIRST_DATA_ROW + i
-            id_cell = ws_out.cell(row=r, column=asset_col, value=clip_id)
-            id_cell.alignment = _CENTER
-            ws_out.cell(row=r, column=duration_col, value=seconds)
-
-        ws_out.column_dimensions[asset_letter].width = 20
-        ws_out.column_dimensions[duration_letter].width = 10
+        title = clean_episode_title(file_path.name)
+        _write_block(ws_out, col, title, "Getty Images Video", rows)
         col += 3  # two data columns + one blank spacer column
 
-    ws_out.freeze_panes = f"A{_FIRST_DATA_ROW}"
+    ws_out.freeze_panes = f"A{_BLOCK_FIRST_DATA_ROW}"
     wb_out.save(out_path)
     return counts
