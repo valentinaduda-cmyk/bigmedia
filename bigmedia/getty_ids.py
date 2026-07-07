@@ -175,8 +175,8 @@ _BOX_BODY_ALIGN = Alignment(horizontal="left", vertical="center", wrap_text=True
 _INSTRUCTIONS_TEXT = (
     "Please divide content into appropriate asset type.\n\n"
     "Under asset ID, please enter the ID listed on the Getty Images website "
-    "for this item - this will either be a 'Creative #', 'Editorial #' for "
-    "stills or 'Clip #' for online video items. For offline items, your clip "
+    "for this item - this will either be a ‘Creative #’, ‘Editorial #’ for "
+    "stills or ‘Clip #’ for online video items. For offline items, your clip "
     "ID should be entered here. \n\n"
     "For your video items, under 'duration' please enter the number of "
     "seconds used of this video within your final edit.\n\n"
