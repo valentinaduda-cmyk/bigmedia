@@ -101,7 +101,7 @@ def _find_name_column(ws, name_column):
     raise ValueError(f"None of {candidates!r} found in header row")
 
 
-def _read_getty_ids(path, sheet_name, name_column, seconds_column, min_seconds):
+def _read_getty_ids(path, sheet_name, name_column, seconds_column, min_seconds, max_seconds=None):
     """Returns one (clip_id, seconds) tuple per unique qualifying clip."""
     wb = load_workbook(path, data_only=True)
     if sheet_name not in wb.sheetnames:
@@ -118,6 +118,8 @@ def _read_getty_ids(path, sheet_name, name_column, seconds_column, min_seconds):
             continue
         seconds = ws.cell(row=r, column=seconds_col_idx).value
         if not isinstance(seconds, (int, float)) or seconds < min_seconds:
+            continue
+        if max_seconds is not None and seconds >= max_seconds:
             continue
         clip_id = extract_getty_id(name)
         if clip_id in seen:
@@ -298,6 +300,7 @@ def build_getty_id_report(
     name_column="Clip Name",
     seconds_column="Seconds",
     min_seconds=5,
+    max_seconds=None,
     production_company="KM Record a.s./Big Media",
     broadcaster="",
     rights="in perpetuity/worldwide/all media",
@@ -315,8 +318,8 @@ def build_getty_id_report(
     col = 1
     last_used_col = 0
     for file_path in files:
-        video_rows = _read_getty_ids(file_path, sheet_name, name_column, seconds_column, min_seconds)
-        stills_rows = _read_getty_ids(file_path, stills_sheet_name, name_column, seconds_column, min_seconds)
+        video_rows = _read_getty_ids(file_path, sheet_name, name_column, seconds_column, min_seconds, max_seconds)
+        stills_rows = _read_getty_ids(file_path, stills_sheet_name, name_column, seconds_column, min_seconds, max_seconds)
         counts[file_path.name] = {"video": len(video_rows), "stills": len(stills_rows)}
 
         title = clean_episode_title(file_path.name)

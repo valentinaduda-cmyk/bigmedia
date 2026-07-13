@@ -194,6 +194,35 @@ def test_build_getty_id_report_min_seconds_is_configurable(tmp_path):
     assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
 
 
+def test_build_getty_id_report_max_seconds_is_configurable(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(in_dir / "EP1.xlsx", [
+        ("GettyImages-1000000001.mov", 3),   # below 5 -> included when max_seconds=5, min_seconds=0
+        ("GettyImages-2000000002.mov", 6),   # at/above 5 -> excluded when max_seconds=5
+    ])
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(
+        str(in_dir), str(out_path), project_name="X", min_seconds=0, max_seconds=5,
+    )
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    assert ws.cell(row=11, column=1).value == "1000000001"
+
+
+def test_build_getty_id_report_max_seconds_default_is_unbounded(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(in_dir / "EP1.xlsx", [("GettyImages-1000000001.mov", 9999)])
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
+
+
 def test_build_getty_id_report_falls_back_to_name_column(tmp_path):
     # Real delivery files disagree: some use "Clip Name", others plain
     # "Name", even within the same batch. Neither should need -o/--name-column.

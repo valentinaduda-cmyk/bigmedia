@@ -109,7 +109,7 @@ def cmd_getty_ids(args):
         str(input_path), out_path, args.project_name,
         sheet_name=args.sheet, stills_sheet_name=args.stills_sheet,
         name_column=args.name_column, seconds_column=args.seconds_column,
-        min_seconds=args.min_seconds,
+        min_seconds=args.min_seconds, max_seconds=args.max_seconds,
         production_company=args.production_company,
         broadcaster=args.broadcaster, rights=args.rights,
     )
@@ -155,6 +155,7 @@ def build_parser():
     p_getty.add_argument("--name-column", default="Clip Name", help='Header of the filename column (default: "Clip Name")')
     p_getty.add_argument("--seconds-column", default="Seconds", help='Header of the total-duration-in-seconds column (default: "Seconds")')
     p_getty.add_argument("--min-seconds", type=float, default=5, help="Only include clips whose total duration is at least this many seconds (default: 5)")
+    p_getty.add_argument("--max-seconds", type=float, default=None, help="Only include clips whose total duration is below this many seconds (default: no upper bound). Combine with --min-seconds 0 to get clips strictly under a threshold, e.g. --min-seconds 0 --max-seconds 5 for clips under 5 seconds.")
     p_getty.set_defaults(func=cmd_getty_ids)
 
     return parser
