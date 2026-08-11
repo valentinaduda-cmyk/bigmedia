@@ -100,3 +100,53 @@ def sample_sorted_master(tmp_path):
     path = tmp_path / "sample_sorted_master.xlsx"
     wb.save(path)
     return path
+
+
+# (clip name, sequence in, sequence out, clip duration, source duration)
+THIRD_PARTIES_ROWS = [
+    # Same clip used 3 times, rows scattered, earliest use is NOT the first row.
+    ("Evan Fairbanks WTC.mp4", "01:00:10:00", "01:00:10:20", "00:00:00:20", "00:00:00:41"),
+    # Only differs from the above by extension -- exact-string matching must
+    # keep it as its own single-use clip, unlike dedup_key().
+    ("Evan Fairbanks WTC.mov", "01:00:20:00", "01:00:22:00", "00:00:02:00", "00:00:02:00"),
+    ("Firehouse raw.mp4", "01:00:30:00", "01:00:31:00", "00:00:01:00", "00:00:01:00"),
+    ("Evan Fairbanks WTC.mp4", "01:00:05:00", "01:00:05:10", "00:00:00:10", "00:00:00:21"),
+    ("Evan Fairbanks WTC.mp4", "01:00:40:00", "01:00:40:15", "00:00:00:15", "00:00:00:30"),
+]
+
+
+@pytest.fixture
+def sample_third_parties(tmp_path):
+    """A sorted workbook whose "3rd parties" sheet is the input of the FU
+    grid command: real-world column layout, one clip used several times
+    with its uses out of order, and a second sheet that must be ignored."""
+    headers = [
+        "Track", "Clip Name", "Enabled", "Sequence In", "Sequence Out",
+        "Clip Duration", "Source Reel Name", "Source In", "Source Out", "Source Duration",
+    ]
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    ws = wb.create_sheet(title="Getty Videos")
+    for c, h in enumerate(headers, start=1):
+        ws.cell(row=1, column=c, value=h)
+    ws.cell(row=2, column=2, value="GettyImages-123.mov")
+
+    ws = wb.create_sheet(title="3rd parties")
+    for c, h in enumerate(headers, start=1):
+        ws.cell(row=1, column=c, value=h)
+    for r, (name, seq_in, seq_out, duration, source_duration) in enumerate(THIRD_PARTIES_ROWS, start=2):
+        ws.cell(row=r, column=1, value="V3")
+        ws.cell(row=r, column=2, value=name)
+        ws.cell(row=r, column=3, value="x")
+        ws.cell(row=r, column=4, value=seq_in)
+        ws.cell(row=r, column=5, value=seq_out)
+        ws.cell(row=r, column=6, value=duration)
+        ws.cell(row=r, column=7, value="3rd parties")
+        ws.cell(row=r, column=10, value=source_duration)
+    ws.column_dimensions["B"].width = 45
+
+    path = tmp_path / "sorted.xlsx"
+    wb.save(path)
+    return path

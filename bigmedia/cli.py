@@ -6,6 +6,7 @@ Usage:
     bigmedia dedupe <input.xlsx|folder> [-o output] [--name-column "Clip Name"]
     bigmedia group  <sorted.xlsx|folder> [-o output] [--fps 25]
     bigmedia getty-ids <folder|sorted.xlsx> [-o output.xlsx]
+    bigmedia fu-grid <sorted.xlsx|folder> [-o output] [--sheet "3rd parties"] [--fps 25]
 
 <input> may be a single .xlsx file or a folder containing several — every
 .xlsx file in the folder is processed and each gets its own output file
@@ -13,15 +14,27 @@ named after it (e.g. "EP21_master.xlsx" -> "EP21_master_sorted.xlsx").
 
 "group" is a second pass over an already-sorted workbook (the output of
 "sort"): on the AP/Getty Videos/Getty Stills/Reuters/Shutterstock/BBC
-sheets it groups duplicate clips together, adds Total Duration/Seconds
-columns, and appends a totals summary. Other sheets pass through untouched.
+sheets ("Getty pics" is recognized as an alias for Getty Stills
+automatically) it groups duplicate clips together, adds Total
+Duration/Seconds columns, and appends a totals summary. Other sheets pass
+through untouched.
 
-"getty-ids" reads the "Getty videos" and "Getty pics" sheets of every
-input workbook (customizable via --sheet/--stills-sheet), keeps only
-unique clips with total duration >= --min-seconds, extracts each clip's
-Getty id from its filename, and writes one Customer Declaration Form-
-styled report (--project-name is required; --production-company,
---broadcaster, --rights fill the rest of the form's header).
+"getty-ids" reads the "Getty Videos" and "Getty Stills" sheets of every
+input workbook (matched case-insensitively; "Getty pics" is recognized as
+an alias for the stills sheet automatically, customizable via
+--sheet/--stills-sheet for other naming), keeps only unique video clips
+with total duration >= --min-seconds (stills are never duration-filtered),
+extracts each clip's Getty id from its filename, and writes one Customer
+Declaration Form-styled report (--project-name is required;
+--production-company, --broadcaster, --rights fill the rest of the form's
+header). --videos-only/--stills-only restrict extraction to one sheet
+(default: both).
+
+"fu-grid" builds the legal follow-up grid from a sorted workbook's "3rd
+parties" sheet: one row per clip (matched by exact clip name), with how
+many times it's used and the summed duration of those uses, plus empty
+columns the legal team fills in by hand. The source sheet is copied
+through untouched as the output's first sheet.
 
 Add new operations as their own subcommand here as they come up, rather
 than as separate one-off scripts — that's the whole point of this file.
@@ -34,6 +47,7 @@ from .sort_workbook import sort_workbook
 from .dedupe import dedupe_workbook
 from .group_duplicates import group_duplicates_workbook
 from .getty_ids import build_getty_id_report
+from .fu_grid import fu_grid_workbook
 from .xlsx_utils import iter_xlsx_files as _iter_xlsx_inputs
 
 
@@ -96,6 +110,16 @@ def cmd_group(args):
     _run_batch(args, "grouped", process_one)
 
 
+def cmd_fu_grid(args):
+    def process_one(input_path, out_path):
+        result = fu_grid_workbook(str(input_path), out_path, sheet=args.sheet, name_column=args.name_column, duration_column=args.duration_column, fps=args.fps)
+        print(f"Wrote {out_path}")
+        print(f"  rows read: {result['rows_in']}")
+        print(f"  unique clips: {result['unique_clips']} ({result['multi_use_clips']} used more than once)")
+
+    _run_batch(args, "fu_grid", process_one)
+
+
 def cmd_getty_ids(args):
     input_path = Path(args.input)
     if args.output:
@@ -112,6 +136,7 @@ def cmd_getty_ids(args):
         min_seconds=args.min_seconds, max_seconds=args.max_seconds,
         production_company=args.production_company,
         broadcaster=args.broadcaster, rights=args.rights,
+        include_video=not args.stills_only, include_stills=not args.videos_only,
     )
     print(f"Wrote {out_path}")
     for name, n in counts.items():
@@ -143,6 +168,15 @@ def build_parser():
     p_group.add_argument("--sheets", help='Comma-separated sheet names to group (default: "AP,Getty Videos,Getty Stills,Reuters,Shutterstock,BBC", matched case-insensitively). Use this when a file names its sheets differently, e.g. --sheets "AP,Getty videos,Getty pics,Reuters,Shutterstock"')
     p_group.set_defaults(func=cmd_group)
 
+    p_fu = subparsers.add_parser("fu-grid", help="Build a legal follow-up grid from a sorted workbook's '3rd parties' sheet")
+    p_fu.add_argument("input", help="Path to a sorted .xlsx (output of 'sort'), or a folder of them")
+    p_fu.add_argument("-o", "--output", help="Output file (single input) or output folder (folder input); default: alongside each input as <name>_fu_grid.xlsx")
+    p_fu.add_argument("--sheet", default="3rd parties", help='Sheet to build the grid from, matched case-insensitively (default: "3rd parties")')
+    p_fu.add_argument("--name-column", default="Clip Name", help='Header of the filename column (default: "Clip Name")')
+    p_fu.add_argument("--duration-column", default="Clip Duration", help='Header of the per-row duration column summed per clip (default: "Clip Duration")')
+    p_fu.add_argument("--fps", type=int, default=25, help="Frame rate used for timecode math (default: 25)")
+    p_fu.set_defaults(func=cmd_fu_grid)
+
     p_getty = subparsers.add_parser("getty-ids", help="Extract Getty clip ids from several sorted workbooks into a Customer Declaration Form report")
     p_getty.add_argument("input", help="Path to a folder of sorted .xlsx files (or a single file)")
     p_getty.add_argument("-o", "--output", help="Output report path (default: <input folder>/getty_ids.xlsx)")
@@ -150,12 +184,15 @@ def build_parser():
     p_getty.add_argument("--production-company", default="KM Record a.s./Big Media", help='Production Company for the form\'s header (default: "KM Record a.s./Big Media")')
     p_getty.add_argument("--broadcaster", default="", help="Broadcaster for the form's header (default: blank)")
     p_getty.add_argument("--rights", default="in perpetuity/worldwide/all media", help='Rights Requested for the form\'s header (default: "in perpetuity/worldwide/all media")')
-    p_getty.add_argument("--sheet", default="Getty videos", help='Sheet to read video clip names from (default: "Getty videos")')
-    p_getty.add_argument("--stills-sheet", default="Getty pics", help='Sheet to read stills clip names from (default: "Getty pics")')
+    p_getty.add_argument("--sheet", default="Getty Videos", help='Sheet to read video clip names from, matched case-insensitively (default: "Getty Videos")')
+    p_getty.add_argument("--stills-sheet", default="Getty Stills", help='Sheet to read stills clip names from, matched case-insensitively (default: "Getty Stills")')
     p_getty.add_argument("--name-column", default="Clip Name", help='Header of the filename column (default: "Clip Name")')
     p_getty.add_argument("--seconds-column", default="Seconds", help='Header of the total-duration-in-seconds column (default: "Seconds")')
-    p_getty.add_argument("--min-seconds", type=float, default=5, help="Only include clips whose total duration is at least this many seconds (default: 5)")
-    p_getty.add_argument("--max-seconds", type=float, default=None, help="Only include clips whose total duration is below this many seconds (default: no upper bound). Combine with --min-seconds 0 to get clips strictly under a threshold, e.g. --min-seconds 0 --max-seconds 5 for clips under 5 seconds.")
+    p_getty.add_argument("--min-seconds", type=float, default=5, help="Only include VIDEO clips whose total duration is at least this many seconds (default: 5). Stills are never filtered by duration.")
+    p_getty.add_argument("--max-seconds", type=float, default=None, help="Only include VIDEO clips whose total duration is below this many seconds (default: no upper bound). Combine with --min-seconds 0 to get clips strictly under a threshold, e.g. --min-seconds 0 --max-seconds 5 for clips under 5 seconds. Stills are never filtered by duration.")
+    p_getty_only = p_getty.add_mutually_exclusive_group()
+    p_getty_only.add_argument("--videos-only", action="store_true", help="Only extract from the video sheet, skip stills entirely")
+    p_getty_only.add_argument("--stills-only", action="store_true", help="Only extract from the stills sheet, skip video entirely")
     p_getty.set_defaults(func=cmd_getty_ids)
 
     return parser

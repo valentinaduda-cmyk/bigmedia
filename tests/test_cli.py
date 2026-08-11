@@ -54,3 +54,15 @@ def test_cmd_dedupe_batch_processes_every_file_in_folder(sample_master, tmp_path
     main(["dedupe", str(in_dir)])
 
     assert (in_dir / "EP1_master_deduped.xlsx").exists()
+
+
+def test_cmd_fu_grid_batch_processes_every_file_in_folder(sample_third_parties, tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    shutil.copy(sample_third_parties, in_dir / "EP1_sorted.xlsx")
+
+    main(["fu-grid", str(in_dir)])
+
+    out = in_dir / "EP1_sorted_fu_grid.xlsx"
+    assert out.exists()
+    assert load_workbook(out).sheetnames == ["3rd parties", "FU grid"]

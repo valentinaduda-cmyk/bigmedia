@@ -33,7 +33,15 @@ data), then:
 bigmedia sort data/in/EP21_master.xlsx -o data/out/EP21_sorted.xlsx
 bigmedia dedupe data/in/EP21_master.xlsx -o data/out/EP21_deduped.xlsx
 bigmedia group data/out/EP21_sorted.xlsx -o data/out/EP21_grouped.xlsx
+bigmedia fu-grid data/out/EP21_sorted.xlsx -o data/out/EP21_fu_grid.xlsx
 ```
+
+`fu-grid` builds the legal follow-up grid from a sorted workbook's "3rd
+parties" sheet: one row per clip (matched by exact clip name), its
+`TOTAL USES` and the summed duration of those uses, plus empty columns
+for the legal team. The source sheet is copied through untouched as the
+output's first sheet. Takes `--sheet` (default "3rd parties"),
+`--duration-column` and `--fps` as well.
 
 All three default to `<input>_sorted.xlsx` / `<input>_deduped.xlsx` /
 `<input>_grouped.xlsx` next to the input file if `-o` is omitted. Use
@@ -72,8 +80,9 @@ bigmedia/
   sort_workbook.py      "sort" command logic
   dedupe.py               "dedupe" command logic
   group_duplicates.py       "group" command logic
-  timecode.py                 frame/timecode conversions (shared helper,
-                                used by group_duplicates)
+  fu_grid.py                  "fu-grid" command logic
+  timecode.py                   frame/timecode conversions (shared helper,
+                                  used by group_duplicates and fu_grid)
   xlsx_utils.py                  shared openpyxl helpers (styling, sheet
                                    copying)
 tests/                      pytest suite + a synthetic fixture generator
