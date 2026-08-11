@@ -28,9 +28,10 @@ EDL disagree, the source EDL wins.
   1 uses). Valentina chose exact matching — the grid is a legal
   check-list, so two files that differ at all are checked separately.
 - **Single-use clips are kept**, with `TOTAL USES` = 1 and `TOTAL
-  DURATION if multiple uses` left blank (the column header says "if
-  multiple uses"). The example contains no 1-use rows, so it gives no
-  guidance here.
+  DURATION if multiple uses` filled in anyway — for a 1-use clip it
+  repeats that clip's own duration. Despite the column name, Valentina
+  wants no blank cells in that column. The example contains no 1-use
+  rows, so it gives no guidance here.
 - **The surviving row of a group is the one with the earliest `Sequence
   In`.** `TC IN`, `TC OUT`, `CLIP DURATION`, `SOURCE DURATION` and
   `CLIP NAME` all come from that one row — never mixed across rows.
@@ -83,7 +84,7 @@ Sheet 2, `FU grid`: 13 columns, in the example's order.
 | B | `TC OUT` | `Sequence Out` of the surviving row |
 | C | `CLIP DURATION` | `Clip Duration` of the surviving row |
 | D | `TOTAL USES` | group size (int) |
-| E | `TOTAL DURATION if multiple uses` | sum of the group's `Clip Duration`, as `HH:MM:SS:FF`; blank when size is 1 |
+| E | `TOTAL DURATION if multiple uses` | sum of the group's `Clip Duration`, as `HH:MM:SS:FF`; equals column C when size is 1 |
 | F | `SOURCE DURATION` | `Source Duration` of the surviving row |
 | G | `SCREENSHOTS` | empty |
 | H | `URL LINK` | empty |
@@ -133,7 +134,7 @@ test (same spirit as `tests/conftest.py` — no client files):
 - `TOTAL DURATION` frame math across a group, including a frame carry
   (e.g. `00:00:00:20` + `00:00:00:10` at 25 fps = `00:00:00:05` in the
   next second).
-- Single-use row leaves `TOTAL DURATION` blank.
+- Single-use row's `TOTAL DURATION` equals its `CLIP DURATION`.
 - Header text and order of all 13 columns, including the trailing space
   in `PREVIEW: `.
 - Surviving row is the earliest `Sequence In`, and grid rows are ordered

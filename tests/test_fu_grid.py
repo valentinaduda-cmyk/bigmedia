@@ -77,11 +77,11 @@ def test_total_duration_sums_the_group_with_frame_carry(grid):
     assert wb["FU grid"].cell(row=2, column=5).value == "00:00:01:20"
 
 
-def test_total_duration_blank_for_single_use_clips(grid):
+def test_total_duration_repeats_the_clip_duration_for_single_use_clips(grid):
     wb, _ = grid
     ws = wb["FU grid"]
     assert ws.cell(row=3, column=4).value == 1
-    assert ws.cell(row=3, column=5).value is None
+    assert ws.cell(row=3, column=5).value == ws.cell(row=3, column=3).value == "00:00:02:00"
 
 
 def test_manual_columns_are_left_empty(grid):

@@ -17,8 +17,9 @@ reuse dedup_key.
 Within a group the row with the earliest "Sequence In" wins: its TC
 IN/OUT, clip duration, source duration and clip name are what land on the
 grid, never a mix of several rows. Grid rows are ordered by that TC IN.
-"TOTAL DURATION if multiple uses" is left blank for single-use clips, as
-the column name implies. Only "Clip Duration" is ever parsed as timecode
+"TOTAL DURATION if multiple uses" is always filled in despite its name --
+for a single-use clip it just repeats that clip's own duration, which the
+team prefers over a blank cell. Only "Clip Duration" is ever parsed as timecode
 -- real files carry "Source Duration" values at a different frame rate
 (e.g. "00:00:04:42"), so that column is copied through as text.
 
@@ -121,14 +122,13 @@ def _write_grid(ws_src, wb_out, groups, columns, fps):
         def source(col_idx):
             return ws_src.cell(row=survivor, column=col_idx).value
 
-        uses = len(rows)
         total_frames = sum(_frames(ws_src.cell(row=r, column=columns["duration"]).value, fps) for r in rows)
         values = [
             source(columns["seq_in"]),
             source(columns["seq_out"]),
             source(columns["duration"]),
-            uses,
-            frames_to_tc(total_frames, fps) if uses > 1 else None,
+            len(rows),
+            frames_to_tc(total_frames, fps),
             source(columns["source_duration"]),
             None, None, None, None,
             source(columns["name"]),
