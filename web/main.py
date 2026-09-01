@@ -7,12 +7,13 @@ from typing import List
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from bigmedia.group_duplicates import group_duplicates_workbook
+from bigmedia.sort_workbook import count_categories
 
 from web.auth import RedirectToLogin, check_password, require_login
 from web.commands import COMMANDS
@@ -142,6 +143,26 @@ def _save_uploads(files: List[UploadFile], dest_dir: Path) -> list:
             shutil.copyfileobj(upload.file, out)
         saved.append(path)
     return saved
+
+
+@app.post("/commands/sort/analyze", dependencies=[Depends(require_login)])
+async def sort_analyze(request: Request, files: List[UploadFile] = File(...)):
+    bad = reject_non_xlsx([f.filename for f in files])
+    if bad:
+        return JSONResponse({"error": f"Not an .xlsx file: {', '.join(bad)}"}, status_code=400)
+
+    form = await request.form()
+    name_column = form.get("name_column") or "Clip Name"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        inputs = _save_uploads(files, tmp_dir)
+        try:
+            counts = count_categories([str(p) for p in inputs], name_column=name_column)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    return JSONResponse({"counts": counts})
 
 
 @app.post("/commands/{slug}", dependencies=[Depends(require_login)])
