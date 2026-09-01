@@ -81,6 +81,24 @@ def resolve_categories(category_order, categories=None, skip_categories=None):
     return list(category_order)
 
 
+def count_categories(paths, name_column="Clip Name"):
+    """Classify every clip across the given workbooks without writing any
+    output, and return {category: count} for every entry in CATEGORY_ORDER
+    (0 where a file has none). Used to preview what a real `sort_workbook`
+    run would produce, e.g. so a caller can skip presenting empty
+    categories as choices."""
+    counts = {category: 0 for category in CATEGORY_ORDER}
+    for path in paths:
+        wb_src = load_workbook(path, read_only=True, data_only=True)
+        ws_src = wb_src.active
+        name_candidates = [name_column] + [a for a in NAME_COLUMN_ALIASES if a != name_column]
+        name_col_idx = find_column_any(ws_src, name_candidates)
+        for row in ws_src.iter_rows(min_row=2, min_col=name_col_idx, max_col=name_col_idx):
+            counts[classify(row[0].value)] += 1
+        wb_src.close()
+    return counts
+
+
 def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=None,
                   categories=None, skip_categories=None,
                   autofit=False, min_width=AUTOFIT_MIN_WIDTH, max_width=AUTOFIT_MAX_WIDTH,

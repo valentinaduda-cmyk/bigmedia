@@ -1,7 +1,29 @@
 import pytest
 from openpyxl import Workbook, load_workbook
-from bigmedia.sort_workbook import sort_workbook
+from bigmedia.classify import CATEGORY_ORDER
+from bigmedia.sort_workbook import count_categories, sort_workbook
 from bigmedia.xlsx_utils import find_column
+
+
+def test_count_categories_tallies_clips_per_category(sample_master):
+    counts = count_categories([str(sample_master)])
+
+    assert counts["AP"] == 2
+    assert counts["GFX"] == 1
+    assert counts["Getty Unknown"] == 1
+    assert counts["Getty Videos"] == 1
+    assert counts["Shutterstock"] == 1
+    assert counts["3rd parties"] == 1
+    # Every known category is present, zero when absent from the file.
+    assert counts["Reuters"] == 0
+    assert set(counts.keys()) == set(CATEGORY_ORDER)
+
+
+def test_count_categories_aggregates_across_multiple_files(sample_master):
+    counts = count_categories([str(sample_master), str(sample_master)])
+
+    assert counts["AP"] == 4
+    assert counts["3rd parties"] == 2
 
 
 def test_sort_workbook_creates_backup_and_category_sheets(sample_master, tmp_path):
