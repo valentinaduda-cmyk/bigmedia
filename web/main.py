@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -13,9 +14,15 @@ APP_DIR = Path(__file__).parent
 
 app = FastAPI(title="bigmedia")
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
+
+session_secret = os.environ.get("BIGMEDIA_SESSION_SECRET", "dev-only-insecure-secret")
+if session_secret == "dev-only-insecure-secret":
+    logging.getLogger(__name__).warning(
+        "Using default insecure session secret; set BIGMEDIA_SESSION_SECRET env var for production"
+    )
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.environ.get("BIGMEDIA_SESSION_SECRET", "dev-only-insecure-secret"),
+    secret_key=session_secret,
 )
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
