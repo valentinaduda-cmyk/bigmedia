@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }} - bigmedia{% endblock %}
+{% block nav %}
+<nav>
+  {% for slug, s in commands.items() %}<a href="/commands/{{ slug }}">{{ s.title }}</a>{% endfor %}
+</nav>
+{% endblock %}
+{% block error %}
+{% if error %}<p class="error-banner">{{ error }}</p>{% endif %}
+{% endblock %}
+{% block content %}
+<form method="post" action="/commands/{{ spec.slug }}" enctype="multipart/form-data">
+  <fieldset>
+    <legend>Options</legend>
+    {% for f in spec.fields %}
+    <label>
+      {{ f.label }}{% if f.required %} (required){% endif %}
+      {% if f.type == "checkbox" %}
+        <input type="checkbox" name="{{ f.name }}" {% if f.default %}checked{% endif %}>
+      {% else %}
+        <input type="text" name="{{ f.name }}" value="{{ f.default if f.default is not none else '' }}" {% if f.required %}required{% endif %}>
+      {% endif %}
+    </label>
+    {% endfor %}
+  </fieldset>
+  <label>File(s)
+    <input type="file" name="files" multiple required accept=".xlsx">
+  </label>
+  <button type="submit">Run {{ spec.title }}</button>
+</form>
+{% endblock %}
