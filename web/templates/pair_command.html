@@ -11,6 +11,23 @@
 {% block content %}
 <p>Compares exactly one "old" file against one "new" file. Folder-vs-folder
    multi-episode comparison is not available in the web UI — use the CLI for that.</p>
+<section>
+  <h2>Presets</h2>
+  {% if presets %}
+  <ul>
+    {% for p in presets %}
+    <li>
+      <a href="/commands/{{ spec.slug }}/pair?preset={{ p.name }}">{{ p.name }}</a>
+      <form style="display:inline" method="post" action="/presets/{{ spec.slug }}/{{ p.name }}/delete">
+        <button type="submit">Delete</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No saved presets yet.</p>
+  {% endif %}
+</section>
 <form method="post" action="/commands/{{ spec.slug }}/pair" enctype="multipart/form-data">
   <fieldset>
     <legend>Options</legend>
@@ -18,15 +35,18 @@
     <label>
       {{ f.label }}
       {% if f.type == "checkbox" %}
-        <input type="checkbox" name="{{ f.name }}" {% if f.default %}checked{% endif %}>
+        <input type="checkbox" name="{{ f.name }}" {% if (values or {}).get(f.name, f.default) %}checked{% endif %}>
       {% else %}
-        <input type="text" name="{{ f.name }}" value="{{ f.default if f.default is not none else '' }}">
+        <input type="text" name="{{ f.name }}" value="{{ (values or {}).get(f.name, f.default) if (values or {}).get(f.name, f.default) is not none else '' }}">
       {% endif %}
     </label>
     {% endfor %}
   </fieldset>
   <label>Old file<input type="file" name="old_file" required accept=".xlsx"></label>
   <label>New file<input type="file" name="new_file" required accept=".xlsx"></label>
-  <button type="submit">Run {{ spec.title }}</button>
+  <button type="submit" name="intent" value="run">Run {{ spec.title }}</button>
+  <input type="text" name="preset_name" placeholder="Preset name">
+  <label><input type="checkbox" name="overwrite"> Overwrite</label>
+  <button type="submit" name="intent" value="save_preset" formaction="/presets/{{ spec.slug }}" formnovalidate>Save as preset</button>
 </form>
 {% endblock %}

@@ -16,11 +16,15 @@ from bigmedia.group_duplicates import group_duplicates_workbook
 from web.auth import RedirectToLogin, check_password, require_login
 from web.commands import COMMANDS
 from web.files import parse_field, reject_non_xlsx, zip_files
+from web.presets import PresetExistsError, delete_preset, get_preset, init_db, list_presets, save_preset
 
 APP_DIR = Path(__file__).parent
 
 app = FastAPI(title="bigmedia")
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
+
+DB_PATH = Path(os.environ.get("BIGMEDIA_DATA_DIR", "data")) / "presets.db"
+init_db(DB_PATH)
 
 session_secret = os.environ.get("BIGMEDIA_SESSION_SECRET", "dev-only-insecure-secret")
 if session_secret == "dev-only-insecure-secret":
@@ -70,11 +74,42 @@ def _command_or_404(slug: str):
 
 
 @app.get("/commands/{slug}", dependencies=[Depends(require_login)])
-def command_form(request: Request, slug: str):
+def command_form(request: Request, slug: str, preset: str = None):
     spec = _command_or_404(slug)
+    values = get_preset(DB_PATH, slug, preset) if preset else {}
     return templates.TemplateResponse(
-        request, "command.html", {"spec": spec, "commands": COMMANDS, "error": None}
+        request, "command.html",
+        {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, slug),
+         "values": values, "error": None},
     )
+
+
+@app.post("/presets/{slug}", dependencies=[Depends(require_login)])
+async def save_preset_route(request: Request, slug: str, preset_name: str = Form(...)):
+    spec = _command_or_404(slug)
+    form = await request.form()
+    overwrite = form.get("overwrite") == "on"
+    options = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+    is_pair = spec.upload_mode in ("pair", "fix_getty")
+    template_name = "pair_command.html" if is_pair else "command.html"
+    redirect_url = f"/commands/{slug}/pair" if is_pair else f"/commands/{slug}"
+    try:
+        save_preset(DB_PATH, slug, preset_name, options, overwrite=overwrite)
+    except PresetExistsError:
+        return templates.TemplateResponse(
+            request, template_name,
+            {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, slug),
+             "error": f"Preset '{preset_name}' already exists — check 'overwrite' to replace it."},
+        )
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@app.post("/presets/{slug}/{name}/delete", dependencies=[Depends(require_login)])
+def delete_preset_route(slug: str, name: str):
+    spec = _command_or_404(slug)
+    delete_preset(DB_PATH, slug, name)
+    redirect_url = f"/commands/{slug}/pair" if spec.upload_mode in ("pair", "fix_getty") else f"/commands/{slug}"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 def _save_uploads(files: List[UploadFile], dest_dir: Path) -> list:
@@ -144,12 +179,15 @@ def _run_combine(spec, files, tmp_dir, kwargs):
 
 
 @app.get("/commands/{slug}/pair", dependencies=[Depends(require_login)])
-def pair_form(request: Request, slug: str):
+def pair_form(request: Request, slug: str, preset: str = None):
     spec = _command_or_404(slug)
     if spec.upload_mode not in ("pair", "fix_getty"):
         raise HTTPException(status_code=404)
+    values = get_preset(DB_PATH, slug, preset) if preset else {}
     return templates.TemplateResponse(
-        request, "pair_command.html", {"spec": spec, "commands": COMMANDS, "error": None}
+        request, "pair_command.html",
+        {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, slug),
+         "values": values, "error": None},
     )
 
 

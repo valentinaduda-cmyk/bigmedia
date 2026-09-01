@@ -10,3 +10,6 @@ data/in/*
 data/out/*
 !data/in/.gitkeep
 !data/out/.gitkeep
+
+# local preset store created on app startup (web/main.py DB_PATH default)
+data/presets.db
