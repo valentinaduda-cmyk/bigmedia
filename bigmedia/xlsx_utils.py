@@ -124,3 +124,133 @@ def copy_sheet_verbatim(src_ws, dst_ws, max_row=None, max_col=None):
         dst_ws.merge_cells(str(merged_range))
 
     dst_ws.freeze_panes = src_ws.freeze_panes
+
+
+# Excel column widths are measured in characters of the default font, so a
+# character count plus a little padding is a good enough proxy for "wide
+# enough to read without dragging the edge".
+AUTOFIT_PADDING = 2
+AUTOFIT_MIN_WIDTH = 10
+AUTOFIT_MAX_WIDTH = 60
+
+
+def measure_column_widths(rows, headers=None, min_width=AUTOFIT_MIN_WIDTH,
+                          max_width=AUTOFIT_MAX_WIDTH, padding=AUTOFIT_PADDING):
+    """Width per column index (1-based) sized to the longest value in it.
+
+    `rows` is an iterable of value sequences; `headers` is an optional extra
+    sequence measured alongside them, so a column whose header is longer than
+    any of its data still fits. Clamped to [min_width, max_width]: without a
+    max, one pathological clip name makes the sheet unusable sideways.
+    """
+    longest = {}
+    sources = []
+    if headers:
+        sources.append(headers)
+    sources.extend(rows)
+    for values in sources:
+        for c, val in enumerate(values, start=1):
+            if val is None:
+                continue
+            n = max(len(part) for part in str(val).split("\n"))
+            if n > longest.get(c, 0):
+                longest[c] = n
+    return {
+        c: min(max(n + padding, min_width), max_width)
+        for c, n in longest.items()
+    }
+
+
+def apply_column_widths(ws, widths):
+    """Set column widths from a {column index: width} mapping."""
+    for c, width in widths.items():
+        ws.column_dimensions[get_column_letter(c)].width = width
+
+
+def apply_uniform_data_font(ws, font, min_row=2):
+    """Give every data cell on the sheet the same font, leaving the header
+    row alone. Source workbooks routinely mix fonts column to column, which
+    makes the output read as several tables stapled together."""
+    for row in ws.iter_rows(min_row=min_row, max_row=ws.max_row,
+                            max_col=ws.max_column):
+        for cell in row:
+            cell.font = copy.copy(font)
+
+
+def measure_header_widths(worksheets, min_width=AUTOFIT_MIN_WIDTH,
+                          max_width=AUTOFIT_MAX_WIDTH, padding=AUTOFIT_PADDING):
+    """Width per HEADER NAME, measured across several sheets at once.
+
+    Keyed by header rather than column index because commands that insert
+    columns mid-table (group_duplicates) leave the same header sitting at
+    different indices on different sheets -- keying by index would make
+    "Clip Name" a different width depending on which tab you opened.
+    """
+    longest = {}
+    for ws in worksheets:
+        headers = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
+        for c, header in enumerate(headers, start=1):
+            if header is None:
+                continue
+            best = longest.get(header, len(str(header)))
+            for r in range(1, ws.max_row + 1):
+                val = ws.cell(row=r, column=c).value
+                if val is None:
+                    continue
+                n = max(len(part) for part in str(val).split("\n"))
+                if n > best:
+                    best = n
+            longest[header] = best
+    return {
+        h: min(max(n + padding, min_width), max_width)
+        for h, n in longest.items()
+    }
+
+
+def apply_header_widths(ws, widths):
+    """Set column widths from a {header name: width} mapping, matching each
+    column by the value in its header row."""
+    for c in range(1, ws.max_column + 1):
+        header = ws.cell(row=1, column=c).value
+        if header in widths:
+            ws.column_dimensions[get_column_letter(c)].width = widths[header]
+
+
+# Real delivery headers are white bold text; the fill is what makes them
+# legible, and it's routinely present on only some columns.
+DEFAULT_HEADER_FILL_COLOR = "FF000000"
+
+
+def dominant_header_fill(worksheets, default_color=DEFAULT_HEADER_FILL_COLOR):
+    """The header fill to standardize on: the most common solid fill already
+    used by any header cell across the given sheets, so the output keeps the
+    file's own house colour rather than one invented here. Falls back to
+    `default_color` when no header cell carries a fill at all."""
+    from openpyxl.styles import PatternFill
+
+    counts = {}
+    for ws in worksheets:
+        for c in range(1, ws.max_column + 1):
+            cell = ws.cell(row=1, column=c)
+            if cell.value is None:
+                continue
+            fill = cell.fill
+            if fill is None or fill.patternType != "solid":
+                continue
+            rgb = getattr(fill.fgColor, "rgb", None)
+            if isinstance(rgb, str):
+                counts[rgb] = counts.get(rgb, 0) + 1
+    if counts:
+        color = max(counts.items(), key=lambda kv: kv[1])[0]
+    else:
+        color = default_color
+    return PatternFill("solid", fgColor=color)
+
+
+def apply_uniform_header_fill(ws, fill):
+    """Give every non-empty header cell the same fill. Leaves the header
+    font alone -- only the fill is normalized."""
+    for c in range(1, ws.max_column + 1):
+        cell = ws.cell(row=1, column=c)
+        if cell.value is not None:
+            cell.fill = copy.copy(fill)

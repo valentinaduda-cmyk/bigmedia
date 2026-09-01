@@ -66,3 +66,20 @@ def test_cmd_fu_grid_batch_processes_every_file_in_folder(sample_third_parties, 
     out = in_dir / "EP1_sorted_fu_grid.xlsx"
     assert out.exists()
     assert load_workbook(out).sheetnames == ["3rd parties", "FU grid"]
+
+
+def test_cmd_sort_skip_categories_flag(sample_master, tmp_path):
+    out = tmp_path / "out.xlsx"
+    main(["sort", str(sample_master), "-o", str(out), "--skip-categories", "FOX, Shutterstock"])
+
+    wb = load_workbook(out)
+    assert "Shutterstock" not in wb.sheetnames
+    assert "FOX" not in wb.sheetnames
+    assert wb["3rd parties"].max_row == 3  # header + own row + the shutterstock one
+
+
+def test_cmd_sort_categories_flag(sample_master, tmp_path):
+    out = tmp_path / "out.xlsx"
+    main(["sort", str(sample_master), "-o", str(out), "--categories", "AP,GFX"])
+
+    assert load_workbook(out).sheetnames == ["Worksheet", "AP", "GFX", "3rd parties"]

@@ -5,20 +5,31 @@ report file. The form matches Getty's template so it can be pasted/sent back
 to Getty with no manual reformatting.
 
 Writes a header section with Production Company, Project Name, Broadcaster,
-and Rights fields. For each input file, reads both the "Getty videos" and
-"Getty pics" sheets (customizable), extracts each clip's Getty id from its
-filename (see extract_getty_id() for the exact rules), and writes two
+and Rights fields. For each input file, reads both the "Getty Videos" and
+"Getty Stills" sheets (matched case-insensitively; the stills sheet also
+falls back to the known alias "Getty pics" if "Getty Stills"/the caller's
+--stills-sheet isn't found, since real delivery files use both names even
+within the same batch — pass --stills-sheet for any other custom name), extracts
+each clip's Getty id from its filename (see extract_getty_id() for the
+exact rules), and writes two
 adjacent 2-column blocks (Asset ID / Duration) per file: one for Video clips,
 one for Stills. Episodes appear left to right in input order, each pair of
 blocks followed by blank spacing before the next episode.
 
-Only UNIQUE clips with a total duration of 5+ seconds are included. Real
-delivery files (and our own `group` command's output) only populate the
-"Seconds" column once per clip — on the last row of a duplicate run, blank
-on the earlier rows of that same run — so filtering to "Seconds present
-and >= min_seconds" naturally selects one row per unique clip. An explicit
-id-based dedup is layered on top as a safety net in case a file doesn't
-follow that convention.
+Only UNIQUE video clips with a total duration of 5+ seconds (--min-seconds,
+--max-seconds) are included. Real delivery files (and our own `group`
+command's output) only populate the "Seconds" column once per clip — on
+the last row of a duplicate run, blank on the earlier rows of that same
+run — so filtering to "Seconds present and >= min_seconds" naturally
+selects one row per unique clip. An explicit id-based dedup is layered on
+top as a safety net in case a file doesn't follow that convention.
+
+Stills have no meaningful "duration" -- min/max-seconds never filters
+them, every uniquely-named still is included regardless of what (if
+anything) is in its Seconds cell.
+
+--videos-only / --stills-only restrict extraction to just one sheet
+(mutually exclusive); by default both are processed.
 
 After the last episode's blocks, fixed gaps place two text boxes side-by-side:
 an "Instructions:" box explaining the form's usage, and an "Important Notes
@@ -33,9 +44,19 @@ from openpyxl.utils import get_column_letter
 from .xlsx_utils import find_column, iter_xlsx_files
 
 _GETTY_PREFIX_RE = re.compile(r'^GettyImages-', re.I)
-_MR_TAG_RE = re.compile(r'^mr_', re.I)
-_EXT_RE = re.compile(r'\.(mov|mp4|jpg)\b', re.I)
+_EXT_RE = re.compile(r'\.(mov|mp4|jpg|new)\b', re.I)
 _KOPIE_SUFFIX_RE = re.compile(r'\s*\(kopie\)\s*$', re.I)
+
+# Known junk tags export/post-process tools bake onto the id as a trailing
+# "_word" chain -- explicitly whitelisted (mirrors dedupe.py's codec/
+# post-process suffix regexes) rather than "any non-numeric segment is
+# junk", because real ids also end in non-numeric-looking segments that are
+# NOT junk (e.g. "1B010728_t010" -- "t010" is part of the id, not a tag).
+_JUNK_PART_RE = re.compile(
+    r'^(?:Apple|ProRes|422|444|4444|HQ|LT|Proxy|DNxHD|DNxHR|H\.?264|H\.?265|HEVC|AVC|'
+    r'XDCAM|MPEG-?[24]?|Denoise|Deflicker|NTSC|AvidRetime(?:-\d+)?|S\d+|upscale\d*)$',
+    re.IGNORECASE,
+)
 
 
 def extract_getty_id(name: str) -> str:
@@ -43,21 +64,23 @@ def extract_getty_id(name: str) -> str:
     Pull the Getty id out of a clip filename. Rules, derived from real
     examples (see tests/test_getty_ids.py for the full regression list):
       - strip a leading "GettyImages-"/"GETTYIMAGES-" prefix
-      - strip a leading "mr_" tag right after that prefix (Getty metadata,
-        not part of the id) — e.g. "mr_00108323.mov" -> "00108323"
-      - if a .mov/.mp4/.jpg extension appears anywhere, cut the string at the
-        start of that extension, dropping it and everything after it
-        (including trailing " 25"-style suffixes). Within what's left,
-        drop a trailing chain of "_word" suffixes (e.g. "_Apple_ProRes_422",
-        "_Denoise_02") UNLESS the suffix is purely numeric (e.g. "_0003"),
-        which is kept as part of the id.
+      - a leading "mr_"/"MR_" tag right after that prefix is part of the id,
+        not metadata — keep it as-is, e.g. "mr_00108323.mov" -> "mr_00108323"
+      - if a .mov/.mp4/.jpg/.new extension appears anywhere, cut the string
+        at the start of that extension, dropping it and everything after it
+        (including trailing " 25"-style suffixes, or a re-render marker
+        like ".new.02"). Within what's left, walk the "_"-separated parts
+        after the first and drop a part plus everything after it the moment
+        one matches a known junk tag (_JUNK_PART_RE, e.g. "_Apple_ProRes_422",
+        "_Denoise_02", "_S000_upscale01"). Purely numeric parts (e.g.
+        "_0003") and any other non-junk part (e.g. "_t010") are kept as
+        part of the id.
       - if no extension is present, keep the remainder as-is (including any
         trailing " 2"-style suffix), except a bare trailing hyphen with
         nothing after it (e.g. "96410456-" -> "96410456").
     """
     s = (name or "").strip()
     s = _GETTY_PREFIX_RE.sub('', s)
-    s = _MR_TAG_RE.sub('', s)
 
     m = _EXT_RE.search(s)
     if m:
@@ -65,10 +88,9 @@ def extract_getty_id(name: str) -> str:
         parts = s.split('_')
         core = [parts[0]]
         for part in parts[1:]:
-            if part.isdigit():
-                core.append(part)
-            else:
+            if _JUNK_PART_RE.match(part):
                 break
+            core.append(part)
         s = '_'.join(core)
     else:
         s = re.sub(r'-$', '', s)
@@ -101,14 +123,51 @@ def _find_name_column(ws, name_column):
     raise ValueError(f"None of {candidates!r} found in header row")
 
 
-def _read_getty_ids(path, sheet_name, name_column, seconds_column, min_seconds, max_seconds=None):
-    """Returns one (clip_id, seconds) tuple per unique qualifying clip."""
+def _find_sheet(wb, sheet_name):
+    """Sheet titles vary in case across real delivery/sort output (e.g.
+    "Getty Videos" vs "Getty videos") — match case-insensitively, same
+    convention as group_duplicates.py."""
+    for title in wb.sheetnames:
+        if title.strip().lower() == sheet_name.strip().lower():
+            return title
+    return None
+
+
+# Real delivery files sometimes use an entirely different word for the
+# stills sheet, not just different casing (e.g. "Getty pics" instead of
+# "Getty Stills") — a plain case-insensitive match on the caller's chosen
+# name won't catch that, so fall back through known aliases same as
+# NAME_COLUMN_ALIASES above.
+_STILLS_SHEET_ALIASES = ("Getty Stills", "Getty pics")
+
+
+def _find_sheet_any(wb, sheet_name, aliases=()):
+    candidates = [sheet_name] + [a for a in aliases if a.strip().lower() != sheet_name.strip().lower()]
+    for candidate in candidates:
+        title = _find_sheet(wb, candidate)
+        if title:
+            return title
+    return None
+
+
+def _read_getty_ids(path, sheet_name, name_column, seconds_column, min_seconds, max_seconds=None,
+                     sheet_aliases=(), filter_by_seconds=True):
+    """Returns one (clip_id, seconds) tuple per unique qualifying clip.
+
+    Stills have no meaningful duration, so callers pass filter_by_seconds=
+    False for them: every uniquely-named row is included regardless of its
+    Seconds cell (even if that column is missing or blank), min/max-seconds
+    is a video-only concept."""
     wb = load_workbook(path, data_only=True)
-    if sheet_name not in wb.sheetnames:
+    actual_sheet_name = _find_sheet_any(wb, sheet_name, sheet_aliases)
+    if actual_sheet_name is None:
         return []
-    ws = wb[sheet_name]
+    ws = wb[actual_sheet_name]
     name_col_idx = _find_name_column(ws, name_column)
-    seconds_col_idx = find_column(ws, seconds_column)
+    try:
+        seconds_col_idx = find_column(ws, seconds_column)
+    except ValueError:
+        seconds_col_idx = None
 
     seen = set()
     rows = []
@@ -116,11 +175,12 @@ def _read_getty_ids(path, sheet_name, name_column, seconds_column, min_seconds, 
         name = ws.cell(row=r, column=name_col_idx).value
         if name is None or str(name).strip() == "":
             continue
-        seconds = ws.cell(row=r, column=seconds_col_idx).value
-        if not isinstance(seconds, (int, float)) or seconds < min_seconds:
-            continue
-        if max_seconds is not None and seconds >= max_seconds:
-            continue
+        seconds = ws.cell(row=r, column=seconds_col_idx).value if seconds_col_idx else None
+        if filter_by_seconds:
+            if not isinstance(seconds, (int, float)) or seconds < min_seconds:
+                continue
+            if max_seconds is not None and seconds >= max_seconds:
+                continue
         clip_id = extract_getty_id(name)
         if clip_id in seen:
             continue
@@ -295,8 +355,8 @@ def build_getty_id_report(
     input_path,
     out_path,
     project_name,
-    sheet_name="Getty videos",
-    stills_sheet_name="Getty pics",
+    sheet_name="Getty Videos",
+    stills_sheet_name="Getty Stills",
     name_column="Clip Name",
     seconds_column="Seconds",
     min_seconds=5,
@@ -304,6 +364,8 @@ def build_getty_id_report(
     production_company="KM Record a.s./Big Media",
     broadcaster="",
     rights="in perpetuity/worldwide/all media",
+    include_video=True,
+    include_stills=True,
 ):
     out_name = Path(out_path).name
     files = [f for f in iter_xlsx_files(input_path) if f.name != out_name]
@@ -318,16 +380,34 @@ def build_getty_id_report(
     col = 1
     last_used_col = 0
     for file_path in files:
-        video_rows = _read_getty_ids(file_path, sheet_name, name_column, seconds_column, min_seconds, max_seconds)
-        stills_rows = _read_getty_ids(file_path, stills_sheet_name, name_column, seconds_column, min_seconds, max_seconds)
+        video_rows = (
+            _read_getty_ids(file_path, sheet_name, name_column, seconds_column, min_seconds, max_seconds)
+            if include_video else []
+        )
+        stills_rows = (
+            _read_getty_ids(
+                file_path, stills_sheet_name, name_column, seconds_column, min_seconds, max_seconds,
+                sheet_aliases=_STILLS_SHEET_ALIASES, filter_by_seconds=False,
+            )
+            if include_stills else []
+        )
         counts[file_path.name] = {"video": len(video_rows), "stills": len(stills_rows)}
 
         title = clean_episode_title(file_path.name)
-        _write_block(ws_out, col, title, "Getty Images Video", video_rows)
-        stills_col = col + 2 + _INTRA_BLOCK_GAP
-        _write_block(ws_out, stills_col, title, "Getty Images Stills", stills_rows)
+        blocks = []
+        if include_video:
+            blocks.append(("Getty Images Video", video_rows))
+        if include_stills:
+            blocks.append(("Getty Images Stills", stills_rows))
 
-        last_used_col = stills_col + 1
+        block_col = col
+        for i, (subtitle, rows) in enumerate(blocks):
+            if i > 0:
+                block_col += _INTRA_BLOCK_GAP
+            _write_block(ws_out, block_col, title, subtitle, rows)
+            block_col += 2
+
+        last_used_col = block_col - 1
         col = last_used_col + 1 + _INTER_EPISODE_GAP
 
     box_start_col = last_used_col + 1 + _BOX_GAP

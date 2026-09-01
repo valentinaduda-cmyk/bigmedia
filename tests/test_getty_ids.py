@@ -20,15 +20,34 @@ CASES = [
     ("GettyImages-1001500162.mov", "1001500162"),
     ("GettyImages-2205665616_Apple_ProRes_422.mov", "2205665616"),
     ("GettyImages-2205665616_Apple_ProRes_422.jpg", "2205665616"),
-    ("GettyImages-mr_00108323.mov", "00108323"),
+    ("GettyImages-mr_00108323.mov", "mr_00108323"),
     ("GettyImages-1344-77.mov", "1344-77"),
     ("GettyImages-1B02673_0003.mov", "1B02673_0003"),
-    ("GettyImages-mr_00097951.mov", "00097951"),
+    ("GettyImages-mr_00097951.mov", "mr_00097951"),
+    ("GETTYIMAGES-MR_00061694", "MR_00061694"),
+    ("GETTYIMAGES-MR_00061694.mov", "MR_00061694"),
+    ("GETTYIMAGES-MR_00061694.mp4", "MR_00061694"),
+    ("GETTYIMAGES-MR_00061694.jpg", "MR_00061694"),
     ("GettyImages-1290166256.mov 25", "1290166256"),
     ("GettyImages-1328879201.mp4 25", "1328879201"),
     ("GettyImages-1053081380-NTSC.mov", "1053081380-NTSC"),
     ("GettyImages-468-9-PAL.mov", "468-9-PAL"),
     ("GettyImages-815292152_Denoise_02.mov", "815292152"),
+    ("GettyImages-1150740782.new.02", "1150740782"),
+    ("GettyImages-1297644901.mov.new.01", "1297644901"),
+    ("GettyImages-1339022866.new.03", "1339022866"),
+    ("GettyImages-518262576.new.05", "518262576"),
+    # Real ids can end in a letter+digits tag that looks superficially like
+    # a junk suffix (e.g. "_Denoise") but is actually part of the id itself
+    # -- must survive extension-cutting, not just the no-extension path.
+    ("GettyImages-1B010728_t010", "1B010728_t010"),
+    ("GettyImages-1B010728_t010.mov", "1B010728_t010"),
+    ("GettyImages-1B010728_t008.mov", "1B010728_t008"),
+    ("GettyImages-1B03368_0006.mov", "1B03368_0006"),
+    # Known junk tags must still be stripped, including when preceded or
+    # followed by a legitimate-looking segment.
+    ("GettyImages-650878972_S000_upscale01.mov", "650878972"),
+    ("GettyImages-650878972_upscale01.mov", "650878972"),
 ]
 
 
@@ -56,12 +75,12 @@ def _make_sorted_workbook(path, rows, stills_rows=None):
     except the last, which carries that clip's total-duration-in-seconds."""
     wb = Workbook()
     wb.remove(wb.active)
-    ws = wb.create_sheet(title="Getty videos")
+    ws = wb.create_sheet(title="Getty Videos")
     ws.append(["Track", "Clip Name", "Seconds"])
     for name, seconds in rows:
         ws.append(["V1", name, seconds])
     if stills_rows is not None:
-        ws_stills = wb.create_sheet(title="Getty pics")
+        ws_stills = wb.create_sheet(title="Getty Stills")
         ws_stills.append(["Track", "Clip Name", "Seconds"])
         for name, seconds in stills_rows:
             ws_stills.append(["V1", name, seconds])
@@ -182,6 +201,29 @@ def test_build_getty_id_report_skips_garbled_seconds_cells(tmp_path):
     out_path = tmp_path / "getty_ids.xlsx"
     counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
     assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
+
+
+def test_build_getty_id_report_stills_ignore_duration_threshold(tmp_path):
+    # Stills have no meaningful "duration" -- min/max-seconds must only
+    # filter the video sheet; every uniquely-named still is extracted
+    # regardless of what's in its Seconds cell (including blank/None).
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(
+        in_dir / "EP1.xlsx",
+        rows=[
+            ("GettyImages-1000000001.mov", 3),  # below default min_seconds=5 -> excluded
+            ("GettyImages-2000000002.mov", 6),
+        ],
+        stills_rows=[
+            ("GettyImages-3000000003.jpg", 1),     # short duration, still included
+            ("GettyImages-4000000004.jpg", None),  # blank duration, still included
+        ],
+    )
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 2}}
 
 
 def test_build_getty_id_report_min_seconds_is_configurable(tmp_path):
@@ -350,6 +392,26 @@ def test_build_getty_id_report_two_episodes_video_and_stills_column_math(tmp_pat
     assert ws.cell(row=7, column=8).value == "EP2"
 
 
+def test_build_getty_id_report_falls_back_to_getty_pics_stills_sheet(tmp_path):
+    # Real delivery files sometimes name the stills sheet "Getty pics"
+    # instead of "Getty Stills" -- must be found without -o/--stills-sheet.
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    wb = Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet(title="Getty videos")
+    ws.append(["Track", "Clip Name", "Seconds"])
+    ws.append(["V1", "GettyImages-1001500162.mov", 6])
+    ws_stills = wb.create_sheet(title="Getty pics")
+    ws_stills.append(["Track", "Clip Name", "Seconds"])
+    ws_stills.append(["V1", "GettyImages-2001500162.jpg", 5])
+    wb.save(in_dir / "EP1.xlsx")
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X")
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 1}}
+
+
 def test_build_getty_id_report_custom_stills_sheet_name(tmp_path):
     in_dir = tmp_path / "in"
     in_dir.mkdir()
@@ -368,6 +430,47 @@ def test_build_getty_id_report_custom_stills_sheet_name(tmp_path):
         str(in_dir), str(out_path), project_name="X", stills_sheet_name="Getty Stills",
     )
     assert counts == {"EP1.xlsx": {"video": 1, "stills": 1}}
+
+
+def test_build_getty_id_report_videos_only(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(
+        in_dir / "EP1.xlsx",
+        rows=[("GettyImages-1000000001.mov", 6)],
+        stills_rows=[("GettyImages-2000000002.jpg", 5)],
+    )
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X", include_stills=False)
+    assert counts == {"EP1.xlsx": {"video": 1, "stills": 0}}
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    assert ws.cell(row=8, column=1).value == "Getty Images Video"
+    assert ws.cell(row=11, column=1).value == "1000000001"
+    # No stills block written -> nothing at the column the stills block
+    # would otherwise occupy.
+    assert ws.cell(row=8, column=4).value is None
+
+
+def test_build_getty_id_report_stills_only(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    _make_sorted_workbook(
+        in_dir / "EP1.xlsx",
+        rows=[("GettyImages-1000000001.mov", 6)],
+        stills_rows=[("GettyImages-2000000002.jpg", 5)],
+    )
+
+    out_path = tmp_path / "getty_ids.xlsx"
+    counts = build_getty_id_report(str(in_dir), str(out_path), project_name="X", include_video=False)
+    assert counts == {"EP1.xlsx": {"video": 0, "stills": 1}}
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty IDs"]
+    assert ws.cell(row=8, column=1).value == "Getty Images Stills"
+    assert ws.cell(row=11, column=1).value == "2000000002"
 
 
 _INSTRUCTIONS_TEXT_START = "Please divide content into appropriate asset type."
