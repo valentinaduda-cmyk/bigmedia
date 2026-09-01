@@ -66,3 +66,16 @@ def test_unauthenticated_request_redirected(monkeypatch):
     client = TestClient(app, follow_redirects=False)
     response = client.get("/commands/sort")
     assert response.status_code == 303
+
+
+def test_sort_path_traversal_blocked(monkeypatch):
+    """Verify that path traversal sequences in filenames are sanitized."""
+    client = _logged_in_client(monkeypatch)
+    # Try to upload a file with path traversal sequences
+    # The filename should be sanitized to just "evil.xlsx"
+    files = {"files": ("../evil.xlsx", _sample_xlsx_bytes(), "application/octet-stream")}
+    response = client.post("/commands/sort", data={"name_column": "Clip Name"}, files=files)
+    # Request should succeed
+    assert response.status_code == 200
+    # Response should contain the sorted output (not an error)
+    assert response.headers["content-disposition"].endswith('"evil_sorted.xlsx"')

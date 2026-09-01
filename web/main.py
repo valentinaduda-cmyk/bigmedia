@@ -78,7 +78,7 @@ def command_form(request: Request, slug: str):
 def _save_uploads(files: List[UploadFile], dest_dir: Path) -> list:
     saved = []
     for upload in files:
-        path = dest_dir / upload.filename
+        path = dest_dir / Path(upload.filename).name
         with open(path, "wb") as out:
             shutil.copyfileobj(upload.file, out)
         saved.append(path)
