@@ -23,6 +23,16 @@ def test_parse_field_list_blank_is_none():
     assert parse_field(field, "") is None
 
 
+def test_parse_field_list_accepts_multiple_checkbox_values():
+    field = FieldSpec("categories", "Categories", "list")
+    assert parse_field(field, ["AP", "GFX"]) == ["AP", "GFX"]
+
+
+def test_parse_field_list_empty_checkbox_list_is_none():
+    field = FieldSpec("categories", "Categories", "list")
+    assert parse_field(field, []) is None
+
+
 def test_parse_field_number_blank_uses_default_none():
     field = FieldSpec("max_seconds", "Max seconds", "number")
     assert parse_field(field, "") is None

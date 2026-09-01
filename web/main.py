@@ -77,6 +77,16 @@ def _command_or_404(slug: str):
     return spec
 
 
+def _build_kwargs(form, fields) -> dict:
+    """Read one value per field from a submitted form, using getlist() for
+    "list"-type fields so multiple same-named inputs (checkboxes) all
+    survive instead of only the first/last one."""
+    return {
+        f.name: parse_field(f, form.getlist(f.name) if f.type == "list" else form.get(f.name))
+        for f in fields
+    }
+
+
 def _pair_url(slug: str, preset: str = None) -> str:
     url = f"/commands/{slug}/pair"
     if preset:
@@ -111,7 +121,7 @@ async def save_preset_route(request: Request, slug: str, preset_name: str = Form
     spec = _command_or_404(slug)
     form = await request.form()
     overwrite = form.get("overwrite") == "on"
-    options = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+    options = _build_kwargs(form, spec.fields)
     is_pair = spec.upload_mode in ("pair", "fix_getty")
     template_name = "pair_command.html" if is_pair else "command.html"
     redirect_url = f"/commands/{slug}/pair" if is_pair else f"/commands/{slug}"
@@ -172,7 +182,7 @@ async def command_submit(request: Request, slug: str, files: List[UploadFile] = 
         raise HTTPException(status_code=404)
 
     form = await request.form()
-    kwargs = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+    kwargs = _build_kwargs(form, spec.fields)
 
     bad = reject_non_xlsx([f.filename for f in files])
     if bad:
@@ -249,7 +259,7 @@ async def pair_submit(request: Request, slug: str, old_file: UploadFile = File(.
     if spec.upload_mode not in ("pair", "fix_getty"):
         raise HTTPException(status_code=404)
     form = await request.form()
-    kwargs = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+    kwargs = _build_kwargs(form, spec.fields)
 
     bad = reject_non_xlsx([old_file.filename, new_file.filename])
     if bad:

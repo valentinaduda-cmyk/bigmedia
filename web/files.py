@@ -9,10 +9,13 @@ def reject_non_xlsx(filenames):
 def parse_field(field, raw):
     if field.type == "checkbox":
         return bool(raw)
-    if raw is None or raw == "":
+    if raw is None or raw == "" or raw == []:
         return None if field.type in ("list", "number") else (field.default or "")
     if field.type == "list":
-        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        if isinstance(raw, list):
+            parts = [p.strip() for p in raw if p.strip()]
+        else:
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
         return parts or None
     if field.type == "number":
         num = float(raw)
