@@ -45,12 +45,13 @@ each one encodes a real delivery someone manually confirmed.
 - Every workbook-producing command writes a `"Worksheet"` sheet first: a
   copy of the input, as a backup. Preserve this pattern in new commands
   unless explicitly told otherwise.
-- The input is expected to already have a "Source Reel Name" column. Every
-  output sheet (including the "Worksheet" backup) overwrites that column
-  per row with the name of whichever sheet the row ended up on — e.g. rows
-  sorted into "AP" get "AP", rows kept by dedupe get "Deduped". This means
-  "Worksheet" is no longer byte-identical to the input; only that one
-  column differs.
+- "Source Reel Name" convention differs by command: `dedupe_workbook`
+  overwrites it per row with the name of whichever sheet the row ended up
+  on ("Deduped"/"Duplicates"), including the "Worksheet" backup — so its
+  "Worksheet" is not byte-identical to the input, only that one column
+  differs. `sort_workbook` does NOT touch this column at all — the column
+  is left exactly as found (or absent, if the source doesn't have one);
+  the "Worksheet" backup is a byte-identical copy.
 - CLI commands are thin wrappers in `cli.py` around a plain function
   (`sort_workbook(src, out, ...)`, `dedupe_workbook(src, out, ...)`) that
   returns a small dict of counts. Follow this shape for new operations so

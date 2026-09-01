@@ -34,7 +34,62 @@ bigmedia sort data/in/EP21_master.xlsx -o data/out/EP21_sorted.xlsx
 bigmedia dedupe data/in/EP21_master.xlsx -o data/out/EP21_deduped.xlsx
 bigmedia group data/out/EP21_sorted.xlsx -o data/out/EP21_grouped.xlsx
 bigmedia fu-grid data/out/EP21_sorted.xlsx -o data/out/EP21_fu_grid.xlsx
+bigmedia compare data/in/EP21_july.xlsx data/out/EP21_sorted.xlsx
+bigmedia fix-getty data/in/OLD_VERSIONS data/out/sorted -o data/out/getty_fixed
 ```
+
+`fix-getty` repairs the Getty Videos/Getty Stills split of freshly sorted
+workbooks against older, hand-checked versions of the same episodes. Some
+EDL exports write Getty stills as bare ids with no `.jpg` and with
+`Source` set to "Getty Images - Footage", so `sort` has nothing to go on
+and files them as videos; the old hand-corrected delivery is the only
+record of which ids are stills. Old and new files are paired by EPISODE
+NUMBER (the "Episode 20" value in the sorted file's first column, or an
+"EP20" in the old file's name) — filenames don't match across versions.
+
+Only the two Getty sheets are touched, only the sheet a row sits on
+changes (no cell value is rewritten, including `Source`), and clips the
+old version doesn't have at all are left where `sort` put them and listed
+as unmatched. A `Getty Stills` sheet is created if the new file has none.
+The output is re-grouped automatically (`--no-group` to skip), so it is a
+drop-in replacement for a `group` output.
+
+`compare` diffs two versions of the same episode category by category:
+how many clips each category holds on either side, which clips the new
+version gained, which it lost, and which merely changed category. Those
+last two are kept apart deliberately — a clip that moved from
+"3rd parties" to "Getty Videos" is not new material and must not be
+cleared twice. Output is a `Summary` sheet (`Clips in old`, `Clips in
+new`, `Added`, `Removed`, `Moved in`, `Moved out`, plus a TOTAL row) then
+`<category> added` / `<category> removed` sheets carrying the real rows
+behind a `Status` column ("added", "moved from Reuters", "removed",
+"moved to AP").
+
+Point it at two folders and every episode present in both is compared,
+paired by episode number; one report per episode lands in
+`<new folder>/compared` (or `-o`). Categories pair by sheet name
+case-insensitively, with `Getty pics`/`Getty Stills` and `graphics`/`GFX`
+aliased; backup tabs ("Worksheet", "... Master XML", "Kopie listu ...")
+are not categories but still count as evidence a clip exists in that file.
+Filenames match via the same `dedup_key` as `dedupe`, case-insensitively
+(`--case-sensitive` to turn that off); `--unique` lists each clip once
+instead of one row per use.
+
+`fix-getty` repairs the Getty Videos/Getty Stills split of freshly sorted
+workbooks against older, hand-checked versions of the same episodes. Some
+EDL exports write Getty stills as bare ids with no `.jpg` and with
+`Source` set to "Getty Images - Footage", so `sort` has nothing to go on
+and files them as videos; the old hand-corrected delivery is the only
+record of which ids are stills. Old and new files are paired by EPISODE
+NUMBER (the "Episode 20" value in the sorted file's first column, or an
+"EP20" in the old file's name) — filenames don't match across versions.
+
+Only the two Getty sheets are touched, only the sheet a row sits on
+changes (no cell value is rewritten, including `Source`), and clips the
+old version doesn't have at all are left where `sort` put them and listed
+as unmatched. A `Getty Stills` sheet is created if the new file has none.
+The output is re-grouped automatically (`--no-group` to skip), so it is a
+drop-in replacement for a `group` output.
 
 `fu-grid` builds the legal follow-up grid from a sorted workbook's "3rd
 parties" sheet: one row per clip (matched by exact clip name), its
@@ -81,6 +136,9 @@ bigmedia/
   dedupe.py               "dedupe" command logic
   group_duplicates.py       "group" command logic
   fu_grid.py                  "fu-grid" command logic
+  compare_versions.py           "compare" command logic (old vs new version)
+  getty_split.py                  "fix-getty" command logic (Getty stills
+                                    misfiled as videos)
   timecode.py                   frame/timecode conversions (shared helper,
                                   used by group_duplicates and fu_grid)
   xlsx_utils.py                  shared openpyxl helpers (styling, sheet
