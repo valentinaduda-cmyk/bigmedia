@@ -88,9 +88,6 @@ def _save_uploads(files: List[UploadFile], dest_dir: Path) -> list:
 @app.post("/commands/{slug}", dependencies=[Depends(require_login)])
 async def command_submit(request: Request, slug: str, files: List[UploadFile] = File(...)):
     spec = _command_or_404(slug)
-    if spec.upload_mode != "batch":
-        raise HTTPException(status_code=400, detail=f"{slug} is not a batch command")
-
     bad = reject_non_xlsx([f.filename for f in files])
     form = await request.form()
     if bad:
@@ -101,29 +98,60 @@ async def command_submit(request: Request, slug: str, files: List[UploadFile] = 
         )
 
     kwargs = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+    missing_required = [f.label for f in spec.fields if f.required and not kwargs.get(f.name)]
+    if missing_required:
+        return templates.TemplateResponse(
+            request, "command.html",
+            {"spec": spec, "commands": COMMANDS,
+             "error": f"Required field(s) missing: {', '.join(missing_required)}"},
+        )
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
-        inputs = _save_uploads(files, tmp_dir)
-        outputs = []
-        for input_path in inputs:
-            out_path = tmp_dir / f"{input_path.stem}_{spec.output_suffix}{input_path.suffix}"
-            spec.func(str(input_path), str(out_path), **kwargs)
-            outputs.append(out_path)
 
-        if len(outputs) == 1:
-            data = outputs[0].read_bytes()
-            return Response(
-                content=data,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": f'attachment; filename="{outputs[0].name}"'},
-            )
+        if spec.upload_mode == "batch":
+            return _run_batch(spec, files, tmp_dir, kwargs)
+        if spec.upload_mode == "combine":
+            return _run_combine(spec, files, tmp_dir, kwargs)
+        raise HTTPException(status_code=400, detail=f"{slug} not wired up yet")
 
-        zip_path = tmp_dir / f"{spec.slug}_results.zip"
-        zip_files(outputs, zip_path)
-        data = zip_path.read_bytes()
-        return Response(
-            content=data,
-            media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{zip_path.name}"'},
-        )
+
+def _run_batch(spec, files, tmp_dir, kwargs):
+    inputs = _save_uploads(files, tmp_dir)
+    outputs = []
+    for input_path in inputs:
+        out_path = tmp_dir / f"{input_path.stem}_{spec.output_suffix}{input_path.suffix}"
+        spec.func(str(input_path), str(out_path), **kwargs)
+        outputs.append(out_path)
+
+    if len(outputs) == 1:
+        return _xlsx_response(outputs[0])
+    zip_path = tmp_dir / f"{spec.slug}_results.zip"
+    zip_files(outputs, zip_path)
+    return _zip_response(zip_path)
+
+
+def _run_combine(spec, files, tmp_dir, kwargs):
+    input_dir = tmp_dir / "input"
+    input_dir.mkdir()
+    _save_uploads(files, input_dir)
+    out_path = tmp_dir / f"{spec.output_suffix}.xlsx"
+    project_name = kwargs.pop("project_name")
+    spec.func(str(input_dir), str(out_path), project_name, **kwargs)
+    return _xlsx_response(out_path)
+
+
+def _xlsx_response(path: Path):
+    return Response(
+        content=path.read_bytes(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+    )
+
+
+def _zip_response(path: Path):
+    return Response(
+        content=path.read_bytes(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+    )
