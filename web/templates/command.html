@@ -2,7 +2,7 @@
 {% block title %}{{ spec.title }} - bigmedia{% endblock %}
 {% block nav %}
 <nav>
-  {% for slug, s in commands.items() %}<a href="/commands/{{ slug }}">{{ s.title }}</a>{% endfor %}
+  {% for slug, s in commands.items() %}<a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a>{% endfor %}
 </nav>
 {% endblock %}
 {% block error %}

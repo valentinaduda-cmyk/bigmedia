@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import List
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
@@ -37,6 +38,8 @@ app.add_middleware(
 )
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
+logger = logging.getLogger(__name__)
+
 
 @app.get("/healthz")
 def healthz():
@@ -62,8 +65,8 @@ def login_submit(request: Request, password: str = Form(...)):
 
 
 @app.get("/", dependencies=[Depends(require_login)])
-def home():
-    return {"status": "ok"}
+def home(request: Request):
+    return templates.TemplateResponse(request, "home.html", {"commands": COMMANDS})
 
 
 def _command_or_404(slug: str):
@@ -73,9 +76,27 @@ def _command_or_404(slug: str):
     return spec
 
 
+def _pair_url(slug: str, preset: str = None) -> str:
+    url = f"/commands/{slug}/pair"
+    if preset:
+        url += f"?preset={preset}"
+    return url
+
+
+def _error_response(request: Request, spec, template_name: str, values: dict, error: str, status_code: int = 200):
+    return templates.TemplateResponse(
+        request, template_name,
+        {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, spec.slug),
+         "values": values, "error": error},
+        status_code=status_code,
+    )
+
+
 @app.get("/commands/{slug}", dependencies=[Depends(require_login)])
 def command_form(request: Request, slug: str, preset: str = None):
     spec = _command_or_404(slug)
+    if spec.upload_mode in ("pair", "fix_getty"):
+        return RedirectResponse(url=_pair_url(slug, preset), status_code=303)
     values = get_preset(DB_PATH, slug, preset) if preset else {}
     return templates.TemplateResponse(
         request, "command.html",
@@ -99,6 +120,7 @@ async def save_preset_route(request: Request, slug: str, preset_name: str = Form
         return templates.TemplateResponse(
             request, template_name,
             {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, slug),
+             "values": options,
              "error": f"Preset '{preset_name}' already exists — check 'overwrite' to replace it."},
         )
     return RedirectResponse(url=redirect_url, status_code=303)
@@ -125,40 +147,43 @@ def _save_uploads(files: List[UploadFile], dest_dir: Path) -> list:
 @app.post("/commands/{slug}", dependencies=[Depends(require_login)])
 async def command_submit(request: Request, slug: str, files: List[UploadFile] = File(...)):
     spec = _command_or_404(slug)
-    bad = reject_non_xlsx([f.filename for f in files])
-    form = await request.form()
-    if bad:
-        return templates.TemplateResponse(
-            request, "command.html",
-            {"spec": spec, "commands": COMMANDS,
-             "error": f"Not an .xlsx file: {', '.join(bad)}"},
-        )
+    if spec.upload_mode in ("pair", "fix_getty"):
+        raise HTTPException(status_code=404)
 
+    form = await request.form()
     kwargs = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+
+    bad = reject_non_xlsx([f.filename for f in files])
+    if bad:
+        return _error_response(request, spec, "command.html", kwargs, f"Not an .xlsx file: {', '.join(bad)}")
+
     missing_required = [f.label for f in spec.fields if f.required and not kwargs.get(f.name)]
     if missing_required:
-        return templates.TemplateResponse(
-            request, "command.html",
-            {"spec": spec, "commands": COMMANDS,
-             "error": f"Required field(s) missing: {', '.join(missing_required)}"},
+        return _error_response(
+            request, spec, "command.html", kwargs,
+            f"Required field(s) missing: {', '.join(missing_required)}",
         )
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
 
         if spec.upload_mode == "batch":
-            return _run_batch(spec, files, tmp_dir, kwargs)
+            return _run_batch(request, spec, files, tmp_dir, kwargs)
         if spec.upload_mode == "combine":
-            return _run_combine(spec, files, tmp_dir, kwargs)
+            return _run_combine(request, spec, files, tmp_dir, kwargs)
         raise HTTPException(status_code=400, detail=f"{slug} not wired up yet")
 
 
-def _run_batch(spec, files, tmp_dir, kwargs):
+def _run_batch(request: Request, spec, files, tmp_dir, kwargs):
     inputs = _save_uploads(files, tmp_dir)
     outputs = []
     for input_path in inputs:
         out_path = tmp_dir / f"{input_path.stem}_{spec.output_suffix}{input_path.suffix}"
-        spec.func(str(input_path), str(out_path), **kwargs)
+        try:
+            spec.func(str(input_path), str(out_path), **kwargs)
+        except Exception as exc:
+            logger.exception("Error running %s on %s", spec.slug, input_path.name)
+            return _error_response(request, spec, "command.html", kwargs, f"{input_path.name}: {exc}")
         outputs.append(out_path)
 
     if len(outputs) == 1:
@@ -168,13 +193,19 @@ def _run_batch(spec, files, tmp_dir, kwargs):
     return _zip_response(zip_path)
 
 
-def _run_combine(spec, files, tmp_dir, kwargs):
+def _run_combine(request: Request, spec, files, tmp_dir, kwargs):
     input_dir = tmp_dir / "input"
     input_dir.mkdir()
     _save_uploads(files, input_dir)
     out_path = tmp_dir / f"{spec.output_suffix}.xlsx"
     project_name = kwargs.pop("project_name")
-    spec.func(str(input_dir), str(out_path), project_name, **kwargs)
+    try:
+        spec.func(str(input_dir), str(out_path), project_name, **kwargs)
+    except Exception as exc:
+        logger.exception("Error running %s", spec.slug)
+        kwargs["project_name"] = project_name
+        offending = files[0].filename if files else spec.slug
+        return _error_response(request, spec, "command.html", kwargs, f"{offending}: {exc}")
     return _xlsx_response(out_path)
 
 
@@ -196,15 +227,12 @@ async def pair_submit(request: Request, slug: str, old_file: UploadFile = File(.
     spec = _command_or_404(slug)
     if spec.upload_mode not in ("pair", "fix_getty"):
         raise HTTPException(status_code=404)
-    bad = reject_non_xlsx([old_file.filename, new_file.filename])
     form = await request.form()
-    if bad:
-        return templates.TemplateResponse(
-            request, "pair_command.html",
-            {"spec": spec, "commands": COMMANDS, "error": f"Not an .xlsx file: {', '.join(bad)}"},
-        )
-
     kwargs = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+
+    bad = reject_non_xlsx([old_file.filename, new_file.filename])
+    if bad:
+        return _error_response(request, spec, "pair_command.html", kwargs, f"Not an .xlsx file: {', '.join(bad)}")
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
@@ -215,32 +243,45 @@ async def pair_submit(request: Request, slug: str, old_file: UploadFile = File(.
         old_path = _save_uploads([old_file], old_dir)[0]
         new_path = _save_uploads([new_file], new_dir)[0]
 
-        if spec.slug == "compare":
-            out_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}{new_path.suffix}"
-            spec.func(str(old_path), str(new_path), str(out_path), **kwargs)
-            return _xlsx_response(out_path)
+        try:
+            if spec.slug == "compare":
+                out_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}{new_path.suffix}"
+                spec.func(str(old_path), str(new_path), str(out_path), **kwargs)
+                return _xlsx_response(out_path)
 
-        # fix-getty: mirrors cli.py:cmd_fix_getty
-        no_group = kwargs.pop("no_group")
-        fixed_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}{new_path.suffix}"
-        spec.func(str(old_path), str(new_path), str(fixed_path), name_column=kwargs["name_column"])
-        if not no_group:
-            grouped_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}_grouped{new_path.suffix}"
-            group_duplicates_workbook(
-                str(fixed_path), str(grouped_path),
-                name_column=kwargs["name_column"],
-                duration_column=kwargs["duration_column"],
-                fps=kwargs["fps"],
+            # fix-getty: mirrors cli.py:cmd_fix_getty
+            no_group = kwargs.get("no_group")
+            fixed_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}{new_path.suffix}"
+            spec.func(str(old_path), str(new_path), str(fixed_path), name_column=kwargs["name_column"])
+            if not no_group:
+                grouped_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}_grouped{new_path.suffix}"
+                group_duplicates_workbook(
+                    str(fixed_path), str(grouped_path),
+                    name_column=kwargs["name_column"],
+                    duration_column=kwargs["duration_column"],
+                    fps=kwargs["fps"],
+                )
+                return _xlsx_response(grouped_path)
+            return _xlsx_response(fixed_path)
+        except Exception as exc:
+            logger.exception("Error running %s on %s / %s", spec.slug, old_path.name, new_path.name)
+            return _error_response(
+                request, spec, "pair_command.html", kwargs,
+                f"{old_path.name} / {new_path.name}: {exc}",
             )
-            return _xlsx_response(grouped_path)
-        return _xlsx_response(fixed_path)
+
+
+def _content_disposition(filename: str) -> str:
+    """Build a Content-Disposition header value safe for non-Latin-1 filenames (RFC 5987)."""
+    ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "download.xlsx"
+    return f"attachment; filename*=UTF-8''{quote(filename)}; filename=\"{ascii_fallback}\""
 
 
 def _xlsx_response(path: Path):
     return Response(
         content=path.read_bytes(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+        headers={"Content-Disposition": _content_disposition(path.name)},
     )
 
 
@@ -248,5 +289,5 @@ def _zip_response(path: Path):
     return Response(
         content=path.read_bytes(),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+        headers={"Content-Disposition": _content_disposition(path.name)},
     )

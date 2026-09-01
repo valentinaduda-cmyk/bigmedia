@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}bigmedia{% endblock %}
+{% block content %}
+<h2>Commands</h2>
+<ul>
+  {% for slug, s in commands.items() %}
+  <li><a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a></li>
+  {% endfor %}
+</ul>
+{% endblock %}
