@@ -153,3 +153,36 @@ Add a function to a new or existing module under `bigmedia/`, wire a
 subcommand for it in `cli.py`, and add tests. Keep the same shape as
 `sort_workbook()` / `dedupe_workbook()`: take an input path and an output
 path, return a small dict of counts/results the CLI can print.
+
+## Web UI
+
+A password-gated web UI (`web/`) wraps every command above for
+non-technical team members — see
+`docs/superpowers/specs/2026-09-01-web-ui-design.md` for the full design.
+
+### Run locally
+
+```bash
+pip install -r requirements.txt
+export BIGMEDIA_WEB_PASSWORD_HASH=$(python3 -c "from web.auth import hash_password; print(hash_password('choose-a-password'))")
+export BIGMEDIA_SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+uvicorn web.main:app --reload
+```
+
+Open http://localhost:8000, log in with the password you chose above.
+
+### Deploy to Railway
+
+1. Push this repo to GitHub.
+2. In Railway: New Project → Deploy from GitHub repo → pick this repo.
+   Railway detects `requirements.txt` + `Procfile` automatically.
+3. Add a Volume to the service, mounted at `/data`.
+4. Set environment variables in the Railway dashboard:
+   - `BIGMEDIA_WEB_PASSWORD_HASH` — output of the `hash_password(...)` command above
+   - `BIGMEDIA_SESSION_SECRET` — output of the `secrets.token_hex(32)` command above
+   - `BIGMEDIA_DATA_DIR` = `/data`
+5. Deploy. Railway gives you a `*.up.railway.app` HTTPS URL — share that with the team.
+6. Every `git push` to the connected branch auto-redeploys.
+
+Cost: Railway's Hobby plan ($5/month flat) covers this comfortably for
+light internal use.
