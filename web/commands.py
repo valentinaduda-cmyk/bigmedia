@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from bigmedia.classify import CATEGORY_ORDER, DEFAULT
 from bigmedia.compare_versions import compare_workbooks
 from bigmedia.dedupe import dedupe_workbook
 from bigmedia.fu_grid import fu_grid_workbook
@@ -110,3 +111,8 @@ COMMANDS = {
         ],
     ),
 }
+
+# The sort form renders these as checkboxes. "3rd parties" is excluded --
+# it's the always-on fallback sheet and can't be turned off (matches the
+# CLI's own resolve_categories() rule).
+SORT_CATEGORIES = [c for c in CATEGORY_ORDER if c != DEFAULT]

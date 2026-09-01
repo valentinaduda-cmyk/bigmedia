@@ -31,6 +31,16 @@ def test_sort_form_renders(monkeypatch):
     assert b"name_column" in response.content
 
 
+def test_sort_form_renders_category_checkboxes_all_checked_by_default(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+    response = client.get("/commands/sort")
+    body = response.content.decode()
+    assert '<input type="checkbox" name="categories" value="AP" checked>' in body
+    assert '<input type="checkbox" name="categories" value="Reuters" checked>' in body
+    # The always-on fallback isn't a togglable checkbox.
+    assert 'value="3rd parties"' not in body
+
+
 def test_sort_single_file_returns_xlsx(monkeypatch):
     client = _logged_in_client(monkeypatch)
     files = {"files": ("master.xlsx", _sample_xlsx_bytes(), "application/octet-stream")}

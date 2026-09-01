@@ -4,3 +4,6 @@ nav a { margin-right: 1rem; }
 .error-banner { background: #fdd; border: 1px solid #c00; padding: 0.75rem; margin-bottom: 1rem; }
 fieldset { margin-bottom: 1rem; }
 label { display: block; margin-top: 0.5rem; }
+.categories { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+.category-checkbox { display: flex; align-items: center; gap: 0.4rem; width: 220px; margin-top: 0.25rem; }
+.categories .hint { flex-basis: 100%; color: #666; font-size: 0.9em; margin: 0.5rem 0 0; }

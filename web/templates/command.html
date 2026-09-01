@@ -30,6 +30,19 @@
   <fieldset>
     <legend>Options</legend>
     {% for f in spec.fields %}
+    {% if f.name == "categories" and spec.slug == "sort" %}
+    <fieldset class="categories">
+      <legend>{{ f.label }}</legend>
+      {% set selected = (values or {}).get("categories") %}
+      {% for category in all_categories %}
+      <label class="category-checkbox">
+        <input type="checkbox" name="categories" value="{{ category }}" {% if selected is none or category in selected %}checked{% endif %}>
+        <span class="category-name">{{ category }}</span>
+      </label>
+      {% endfor %}
+      <p class="hint">"3rd parties" is always included — clips from any turned-off category land there for manual review.</p>
+    </fieldset>
+    {% else %}
     <label>
       {{ f.label }}{% if f.required %} (required){% endif %}
       {% if f.type == "checkbox" %}
@@ -38,6 +51,7 @@
         <input type="text" name="{{ f.name }}" value="{{ (values or {}).get(f.name, f.default) if (values or {}).get(f.name, f.default) is not none else '' }}" {% if f.required %}required{% endif %}>
       {% endif %}
     </label>
+    {% endif %}
     {% endfor %}
   </fieldset>
   <label>File(s)
@@ -48,4 +62,37 @@
   <label><input type="checkbox" name="overwrite"> Overwrite</label>
   <button type="submit" name="intent" value="save_preset" formaction="/presets/{{ spec.slug }}" formnovalidate>Save as preset</button>
 </form>
+{% if spec.slug == "sort" %}
+<script>
+(function () {
+  var fileInput = document.querySelector('input[name="files"]');
+  var nameColumnInput = document.querySelector('input[name="name_column"]');
+  if (!fileInput) return;
+
+  fileInput.addEventListener("change", function () {
+    if (!fileInput.files.length) return;
+
+    var formData = new FormData();
+    for (var i = 0; i < fileInput.files.length; i++) {
+      formData.append("files", fileInput.files[i]);
+    }
+    if (nameColumnInput) formData.append("name_column", nameColumnInput.value);
+
+    fetch("/commands/sort/analyze", { method: "POST", body: formData })
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (data) {
+        if (!data || !data.counts) return;
+        document.querySelectorAll('input[name="categories"]').forEach(function (box) {
+          var count = data.counts[box.value];
+          if (typeof count !== "number") return;
+          box.checked = count > 0;
+          var nameSpan = box.parentElement.querySelector(".category-name");
+          if (nameSpan) nameSpan.textContent = box.value + " (" + count + (count === 1 ? " clip" : " clips") + ")";
+        });
+      })
+      .catch(function () { /* leave checkboxes at their defaults if analysis fails */ });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

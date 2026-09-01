@@ -1,4 +1,4 @@
-from web.commands import COMMANDS
+from web.commands import COMMANDS, SORT_CATEGORIES
 
 
 def test_all_seven_commands_registered():
@@ -28,3 +28,8 @@ def test_upload_modes():
     assert COMMANDS["compare"].upload_mode == "pair"
     assert COMMANDS["fix-getty"].upload_mode == "fix_getty"
     assert COMMANDS["getty-ids"].upload_mode == "combine"
+
+
+def test_sort_categories_excludes_always_on_fallback():
+    assert "3rd parties" not in SORT_CATEGORIES
+    assert "AP" in SORT_CATEGORIES

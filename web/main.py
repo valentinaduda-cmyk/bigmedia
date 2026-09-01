@@ -16,7 +16,7 @@ from bigmedia.group_duplicates import group_duplicates_workbook
 from bigmedia.sort_workbook import count_categories
 
 from web.auth import RedirectToLogin, check_password, require_login
-from web.commands import COMMANDS
+from web.commands import COMMANDS, SORT_CATEGORIES
 from web.files import parse_field, reject_non_xlsx, zip_files
 from web.presets import PresetExistsError, delete_preset, get_preset, init_db, list_presets, save_preset
 
@@ -98,7 +98,7 @@ def _error_response(request: Request, spec, template_name: str, values: dict, er
     return templates.TemplateResponse(
         request, template_name,
         {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, spec.slug),
-         "values": values, "error": error},
+         "values": values, "error": error, "all_categories": SORT_CATEGORIES},
         status_code=status_code,
     )
 
@@ -112,7 +112,7 @@ def command_form(request: Request, slug: str, preset: str = None):
     return templates.TemplateResponse(
         request, "command.html",
         {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, slug),
-         "values": values, "error": None},
+         "values": values, "error": None, "all_categories": SORT_CATEGORIES},
     )
 
 
@@ -131,7 +131,7 @@ async def save_preset_route(request: Request, slug: str, preset_name: str = Form
         return templates.TemplateResponse(
             request, template_name,
             {"spec": spec, "commands": COMMANDS, "presets": list_presets(DB_PATH, slug),
-             "values": options,
+             "values": options, "all_categories": SORT_CATEGORIES,
              "error": f"Preset '{preset_name}' already exists — check 'overwrite' to replace it."},
         )
     return RedirectResponse(url=redirect_url, status_code=303)
