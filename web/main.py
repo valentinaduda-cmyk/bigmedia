@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from bigmedia.group_duplicates import group_duplicates_workbook
+
 from web.auth import RedirectToLogin, check_password, require_login
 from web.commands import COMMANDS
 from web.files import parse_field, reject_non_xlsx, zip_files
@@ -139,6 +141,61 @@ def _run_combine(spec, files, tmp_dir, kwargs):
     project_name = kwargs.pop("project_name")
     spec.func(str(input_dir), str(out_path), project_name, **kwargs)
     return _xlsx_response(out_path)
+
+
+@app.get("/commands/{slug}/pair", dependencies=[Depends(require_login)])
+def pair_form(request: Request, slug: str):
+    spec = _command_or_404(slug)
+    if spec.upload_mode not in ("pair", "fix_getty"):
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request, "pair_command.html", {"spec": spec, "commands": COMMANDS, "error": None}
+    )
+
+
+@app.post("/commands/{slug}/pair", dependencies=[Depends(require_login)])
+async def pair_submit(request: Request, slug: str, old_file: UploadFile = File(...), new_file: UploadFile = File(...)):
+    spec = _command_or_404(slug)
+    if spec.upload_mode not in ("pair", "fix_getty"):
+        raise HTTPException(status_code=404)
+    bad = reject_non_xlsx([old_file.filename, new_file.filename])
+    form = await request.form()
+    if bad:
+        return templates.TemplateResponse(
+            request, "pair_command.html",
+            {"spec": spec, "commands": COMMANDS, "error": f"Not an .xlsx file: {', '.join(bad)}"},
+        )
+
+    kwargs = {f.name: parse_field(f, form.get(f.name)) for f in spec.fields}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        old_dir = tmp_dir / "old"
+        new_dir = tmp_dir / "new"
+        old_dir.mkdir()
+        new_dir.mkdir()
+        old_path = _save_uploads([old_file], old_dir)[0]
+        new_path = _save_uploads([new_file], new_dir)[0]
+
+        if spec.slug == "compare":
+            out_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}{new_path.suffix}"
+            spec.func(str(old_path), str(new_path), str(out_path), **kwargs)
+            return _xlsx_response(out_path)
+
+        # fix-getty: mirrors cli.py:cmd_fix_getty
+        no_group = kwargs.pop("no_group")
+        fixed_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}{new_path.suffix}"
+        spec.func(str(old_path), str(new_path), str(fixed_path), name_column=kwargs["name_column"])
+        if not no_group:
+            grouped_path = tmp_dir / f"{new_path.stem}_{spec.output_suffix}_grouped{new_path.suffix}"
+            group_duplicates_workbook(
+                str(fixed_path), str(grouped_path),
+                name_column=kwargs["name_column"],
+                duration_column=kwargs["duration_column"],
+                fps=kwargs["fps"],
+            )
+            return _xlsx_response(grouped_path)
+        return _xlsx_response(fixed_path)
 
 
 def _xlsx_response(path: Path):
