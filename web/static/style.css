@@ -1,0 +1,6 @@
+body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+header { display: flex; align-items: baseline; gap: 1.5rem; border-bottom: 1px solid #ccc; margin-bottom: 1.5rem; }
+nav a { margin-right: 1rem; }
+.error-banner { background: #fdd; border: 1px solid #c00; padding: 0.75rem; margin-bottom: 1rem; }
+fieldset { margin-bottom: 1rem; }
+label { display: block; margin-top: 0.5rem; }
