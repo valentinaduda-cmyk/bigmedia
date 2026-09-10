@@ -274,40 +274,42 @@ def analyze_files(paths):
 
     for path in paths:
         name = Path(path).name
+        wb = None
         try:
             wb = load_workbook(path, read_only=True, data_only=True)
+
+            active = wb.active
+            file_headers = [
+                c.value for c in next(active.iter_rows(min_row=1, max_row=1), [])
+                if c.value is not None and str(c.value).strip() != ""
+            ]
+            for h in file_headers:
+                if h not in seen_headers:
+                    seen_headers.add(h)
+                    headers.append(h)
+
+            if first_header_set is None:
+                first_header_set = set(file_headers)
+                first_name = name
+            elif set(file_headers) != first_header_set:
+                warnings.append(f"{name}: columns differ from {first_name}")
+
+            for title in wb.sheetnames:
+                ws = wb[title]
+                rows = ws.max_row
+                if rows is None:
+                    rows = sum(1 for _ in ws.iter_rows())
+                count = max(rows - 1, 0)
+                if title not in sheet_rows:
+                    sheet_rows[title] = 0
+                    sheet_order.append(title)
+                sheet_rows[title] += count
+
         except Exception as exc:  # openpyxl raises several unrelated types
             warnings.append(f"{name}: could not read ({exc})")
-            continue
-
-        active = wb.active
-        file_headers = [
-            c.value for c in next(active.iter_rows(min_row=1, max_row=1), [])
-            if c.value is not None and str(c.value).strip() != ""
-        ]
-        for h in file_headers:
-            if h not in seen_headers:
-                seen_headers.add(h)
-                headers.append(h)
-
-        if first_header_set is None:
-            first_header_set = set(file_headers)
-            first_name = name
-        elif set(file_headers) != first_header_set:
-            warnings.append(f"{name}: columns differ from {first_name}")
-
-        for title in wb.sheetnames:
-            ws = wb[title]
-            rows = ws.max_row
-            if rows is None:
-                rows = sum(1 for _ in ws.iter_rows())
-            count = max(rows - 1, 0)
-            if title not in sheet_rows:
-                sheet_rows[title] = 0
-                sheet_order.append(title)
-            sheet_rows[title] += count
-
-        wb.close()
+        finally:
+            if wb is not None:
+                wb.close()
 
     return {
         "headers": headers,

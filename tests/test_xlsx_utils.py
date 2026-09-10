@@ -1,4 +1,3 @@
-import pytest
 from openpyxl import Workbook
 
 from bigmedia.xlsx_utils import analyze_files
@@ -58,3 +57,29 @@ def test_unreadable_file_warns_and_others_still_processed(tmp_path):
     result = analyze_files([str(bad), good])
     assert result["headers"] == ["Clip Name"]
     assert any("bad.xlsx" in w and "could not read" in w for w in result["warnings"])
+
+
+def test_lazily_parsed_xml_failure_warns_and_others_still_processed(tmp_path):
+    import zipfile
+
+    # Create a valid xlsx, then corrupt it by removing workbook.xml
+    # This passes load_workbook but fails when accessing sheets
+    good = _make(tmp_path / "good.xlsx", {"S": [["Clip Name"], ["x"]]})
+    corrupt = tmp_path / "corrupt.xlsx"
+
+    # Create a minimal valid zip that looks like an xlsx but is missing critical XML
+    with zipfile.ZipFile(corrupt, 'w') as zf:
+        # Write minimal required structure that passes initial load but fails on access
+        zf.writestr('[Content_Types].xml',
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '</Types>')
+        zf.writestr('_rels/.rels',
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '</Relationships>')
+        # Missing xl/workbook.xml will cause failure when accessing sheets
+
+    result = analyze_files([str(corrupt), good])
+    assert result["headers"] == ["Clip Name"]
+    assert any("corrupt.xlsx" in w and "could not read" in w for w in result["warnings"])
