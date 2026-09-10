@@ -41,7 +41,7 @@ import re
 from openpyxl import load_workbook, Workbook
 
 from .dedupe import dedup_key
-from .xlsx_utils import find_column_any, copy_sheet_verbatim
+from .xlsx_utils import find_column_any, copy_sheet_verbatim, style_output_sheets, first_data_font
 
 NAME_COLUMN_ALIASES = ("Clip Name", "Name")
 
@@ -261,6 +261,12 @@ def fix_getty_split(old_path, new_path, out_path, name_column="Clip Name"):
             _write_sheet(wb_out, stills_title, ws_stills, stills_rows, _zebra_fills(ws_stills))
         else:
             copy_sheet_verbatim(ws_src, wb_out.create_sheet(title=title), ws_src.max_row, ws_src.max_column)
+
+    getty_sheets = [wb_out[t] for t in wb_out.sheetnames
+                    if t in (videos_title, stills_title)]
+    if getty_sheets:
+        style_output_sheets(getty_sheets, width_by="index",
+                            data_font=first_data_font(getty_sheets))
 
     wb_out.save(out_path)
     return result

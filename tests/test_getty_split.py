@@ -55,6 +55,12 @@ def old(tmp_path):
 
 
 @pytest.fixture
+def getty_split_pair(old, new):
+    """Returns (old_path, new_path) tuple for styling tests."""
+    return (old, new)
+
+
+@pytest.fixture
 def new(tmp_path):
     return _new_file(tmp_path / "SECRETS OF - SUBMARINE_sorted.xlsx", 4,
                      videos=["GettyImages-111.mov", "GETTYIMAGES-333", "GETTYIMAGES-333",
@@ -171,3 +177,27 @@ def test_pairing_is_by_episode_number_not_filename(old, new, tmp_path):
     assert pairs == [(4, old, new)]
     assert unpaired_old == [other_old]
     assert unpaired_new == []
+
+
+def test_getty_split_output_is_styled_zebra_kept(getty_split_pair, tmp_path):
+    """Getty output sheets get standard styling: black/white header,
+    uniform font, fit-to-width. Zebra row fills are preserved."""
+    old_p, new_p = getty_split_pair
+    out = tmp_path / "fixed.xlsx"
+    fix_getty_split(str(old_p), str(new_p), str(out))
+    wb = load_workbook(str(out))
+    getty_sheets = [t for t in wb.sheetnames if t.lower().startswith("getty")]
+    assert getty_sheets, "No Getty sheets found"
+    for t in getty_sheets:
+        ws = wb[t]
+        # Header cell (row 1, col 1) has black fill and white bold font
+        h = ws.cell(row=1, column=1)
+        assert h.fill.fgColor.rgb == "FF000000", f"{t}: header fill not black"
+        assert h.font.bold, f"{t}: header not bold"
+        assert h.font.color.rgb == "FFFFFFFF", f"{t}: header text not white"
+        # Column A width is within expected range
+        assert 10 <= ws.column_dimensions["A"].width <= 60, f"{t}: column A width {ws.column_dimensions['A'].width} out of range"
+        # Zebra striping preserved: rows 2 and 3 have different fills (when present)
+        if ws.max_row >= 3:
+            assert ws.cell(row=2, column=1).fill != ws.cell(row=3, column=1).fill, \
+                f"{t}: zebra striping lost (rows 2 and 3 have same fill)"
