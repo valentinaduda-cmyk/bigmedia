@@ -99,6 +99,22 @@ def count_categories(paths, name_column="Clip Name"):
     return counts
 
 
+def analyze_sort(paths, name_column="Clip Name"):
+    """Analyze step for the web UI's Sort form: classify every clip without
+    writing output and report which categories are worth keeping (a
+    suggestion) plus the full per-category count (a display annotation). A
+    name column that isn't in the file is a warning, not an error -- the
+    user can pick the right column from the dropdown and re-run analysis."""
+    try:
+        counts = count_categories(paths, name_column=name_column)
+    except ValueError as exc:
+        return {"warnings": [str(exc)]}
+    return {
+        "suggestions": {"categories": [c for c, n in counts.items() if n > 0]},
+        "annotations": {"categories": counts},
+    }
+
+
 def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=None,
                   categories=None, skip_categories=None,
                   autofit=False, min_width=AUTOFIT_MIN_WIDTH, max_width=AUTOFIT_MAX_WIDTH,

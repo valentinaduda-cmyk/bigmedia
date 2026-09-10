@@ -227,3 +227,32 @@ def test_sort_workbook_worksheet_backup_is_untouched_by_formatting(sample_master
     backup = load_workbook(out_path)["Worksheet"]
     for col_letter in ("A", "B", "C", "D"):
         assert backup.column_dimensions[col_letter].width == src.column_dimensions[col_letter].width
+
+
+def test_analyze_sort_suggests_only_nonzero_categories(tmp_path):
+    from bigmedia.sort_workbook import analyze_sort
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Clip Name"])
+    ws.append(["BM1234_x.mxf"])       # AP
+    ws.append(["shutterstock_9.mp4"]) # Shutterstock
+    path = tmp_path / "m.xlsx"
+    wb.save(path)
+
+    result = analyze_sort([str(path)])
+    assert set(result["suggestions"]["categories"]) == {"AP", "Shutterstock"}
+    assert result["annotations"]["categories"]["AP"] == 1
+    assert result["annotations"]["categories"]["Reuters"] == 0
+    assert "warnings" not in result
+
+
+def test_analyze_sort_missing_name_column_warns_not_raises(tmp_path):
+    from bigmedia.sort_workbook import analyze_sort
+    wb = Workbook()
+    wb.active.append(["Something Else"])
+    path = tmp_path / "m.xlsx"
+    wb.save(path)
+
+    result = analyze_sort([str(path)], name_column="Clip Name")
+    assert result["warnings"]
+    assert "suggestions" not in result
