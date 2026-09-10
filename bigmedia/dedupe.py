@@ -41,7 +41,7 @@ import re
 import copy
 from openpyxl import load_workbook, Workbook
 
-from .xlsx_utils import find_column, find_column_any, capture_header_template, write_header_row, write_data_row, copy_sheet_verbatim
+from .xlsx_utils import find_column, find_column_any, capture_header_template, write_header_row, write_data_row, copy_sheet_verbatim, style_output_sheets, sample_data_font
 
 # Real delivery files aren't consistent about the clip-name header: some
 # episodes use "Name", others "Clip Name" for the same data. Whichever one
@@ -183,6 +183,12 @@ def dedupe_workbook(src_path, out_path, name_column="Clip Name"):
         for col_letter, width in col_widths.items():
             ws_out.column_dimensions[col_letter].width = width
         ws_out.freeze_panes = "A2"
+
+    style_output_sheets(
+        [wb_out["Deduped"], wb_out["Duplicates"]],
+        width_by="index",
+        data_font=sample_data_font(ws_src, name_col_idx),
+    )
 
     wb_out.save(out_path)
     return {"kept": len(kept_rows), "dropped": len(dropped_rows)}

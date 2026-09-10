@@ -47,16 +47,17 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 from .dedupe import dedup_key
-from .xlsx_utils import find_column_any, capture_header_template, write_data_row
+from .xlsx_utils import (
+    find_column_any, capture_header_template, write_data_row,
+    style_output_sheets, apply_header_style, sample_data_font,
+    BACKUP_SHEET_PATTERNS, is_backup_sheet,
+)
 
 # Same header aliases the other commands accept -- real files use either.
 NAME_COLUMN_ALIASES = ("Clip Name", "Name")
 
-# Sheets that are a copy of the whole EDL rather than a source category:
-# the backup tab `sort`/`dedupe` write, and the raw master/XML tabs the
-# edit team leaves in hand-made workbooks (Czech "Kopie listu" = "copy of
-# sheet").
-BACKUP_SHEET_PATTERNS = ("worksheet", "master xml", "kopie listu", "copy of")
+# BACKUP_SHEET_PATTERNS / is_backup_sheet now live in xlsx_utils (the
+# styling pass needs them too); re-exported here for existing importers.
 
 # Categories that mean the same thing under different names across
 # versions, so they pair up instead of showing as one all-removed and one
@@ -76,11 +77,6 @@ SUMMARY_HEADERS = [
 ]
 STATUS_HEADER = "Status"
 MAX_SHEET_TITLE = 31
-
-
-def is_backup_sheet(title) -> bool:
-    t = (title or "").strip().lower()
-    return any(p in t for p in BACKUP_SHEET_PATTERNS)
 
 
 def category_key(title) -> str:
@@ -202,8 +198,11 @@ def _write_rows_sheet(wb_out, title, ws_src, rows):
     for out_r, (src_r, status) in enumerate(rows, start=2):
         values = [ws_src.cell(row=src_r, column=c).value for c in range(1, max_col + 1)]
         fill = fill_even if out_r % 2 == 0 else fill_odd
+        # Column 1 (Status) has no source font; the uniform data font from
+        # style_output_sheets lands on it, and compare_workbooks re-bolds it
+        # afterwards.
         write_data_row(ws_out, out_r, [status] + values,
-                       [Font(bold=True)] + template["col_font"],
+                       [Font()] + template["col_font"],
                        ["General"] + template["col_numfmt"], fill)
 
     ws_out.column_dimensions["A"].width = 26
@@ -283,5 +282,19 @@ def compare_workbooks(old_path, new_path, out_path, name_column="Clip Name",
     _write_summary(wb_out, report)
     for title, ws_src, rows in sheets_to_write:
         _write_rows_sheet(wb_out, title, ws_src, rows)
+
+    apply_header_style(wb_out["Summary"])
+    row_sheets = [wb_out[t] for t in wb_out.sheetnames if t != "Summary"]
+    if row_sheets and sheets_to_write:
+        style_output_sheets(
+            row_sheets,
+            width_by="header",
+            data_font=sample_data_font(sheets_to_write[0][1], 1),
+        )
+        # The uniform data font owns every other cell; the Status column (A)
+        # is deliberately bold, so re-apply it after the styling pass.
+        for ws in row_sheets:
+            for r in range(2, ws.max_row + 1):
+                ws.cell(row=r, column=1).font = Font(bold=True)
     wb_out.save(out_path)
     return report

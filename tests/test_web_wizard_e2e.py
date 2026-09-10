@@ -59,3 +59,20 @@ def test_analyze_then_run_sort(monkeypatch):
     assert "Shutterstock" not in wb.sheetnames
     ap = wb["AP"]
     assert ap.max_row == 3  # header + 2 AP clips
+
+
+def test_run_sort_output_is_styled(monkeypatch):
+    client = _client(monkeypatch)
+    content = _master()
+    r = client.post(
+        "/commands/sort",
+        data={"name_column": "Media File", "categories": ["AP"], "categories_present": "1"},
+        files={"files": ("m.xlsx", content, "application/octet-stream")},
+    )
+    assert r.status_code == 200
+    wb = load_workbook(io.BytesIO(r.content))
+    ap = wb["AP"]
+    assert ap.cell(row=1, column=1).fill.fgColor.rgb == "FF000000"
+    assert ap.cell(row=1, column=1).font.color.rgb == "FFFFFFFF"
+    assert ap.cell(row=1, column=1).font.bold
+    assert 10 <= ap.column_dimensions["A"].width <= 60

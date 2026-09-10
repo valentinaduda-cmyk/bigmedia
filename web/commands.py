@@ -9,7 +9,6 @@ from bigmedia.getty_ids import build_getty_id_report
 from bigmedia.getty_split import fix_getty_split
 from bigmedia.group_duplicates import group_duplicates_workbook
 from bigmedia.sort_workbook import sort_workbook, analyze_sort
-from bigmedia.xlsx_utils import AUTOFIT_MAX_WIDTH, AUTOFIT_MIN_WIDTH
 
 
 @dataclass
@@ -45,10 +44,6 @@ COMMANDS = {
             _NAME_COLUMN,
             FieldSpec("categories", "Categories to keep (comma-separated, blank = all)", "list"),
             FieldSpec("skip_categories", "Categories to skip (comma-separated)", "list"),
-            FieldSpec("autofit", "Autofit column widths", "checkbox", False),
-            FieldSpec("min_width", "Min column width", "number", AUTOFIT_MIN_WIDTH),
-            FieldSpec("max_width", "Max column width", "number", AUTOFIT_MAX_WIDTH),
-            FieldSpec("uniform_font", "Uniform data font", "checkbox", False),
         ],
     ),
     "dedupe": CommandSpec(
@@ -62,11 +57,6 @@ COMMANDS = {
         fields=[
             _NAME_COLUMN, _DURATION_COLUMN, _FPS,
             FieldSpec("sheets", "Sheets to group (comma-separated, blank = default set)", "list"),
-            FieldSpec("autofit", "Autofit column widths", "checkbox", False),
-            FieldSpec("min_width", "Min column width", "number", AUTOFIT_MIN_WIDTH),
-            FieldSpec("max_width", "Max column width", "number", AUTOFIT_MAX_WIDTH),
-            FieldSpec("uniform_font", "Uniform data font", "checkbox", False),
-            FieldSpec("uniform_header", "Uniform header fill colour", "checkbox", False),
         ],
     ),
     "fu-grid": CommandSpec(

@@ -9,10 +9,12 @@ def test_all_seven_commands_registered():
 
 def test_sort_fields_match_cli_options():
     field_names = {f.name for f in COMMANDS["sort"].fields}
-    assert field_names == {
-        "name_column", "categories", "skip_categories",
-        "autofit", "min_width", "max_width", "uniform_font",
-    }
+    assert field_names == {"name_column", "categories", "skip_categories"}
+
+
+def test_group_fields_match_cli_options():
+    field_names = {f.name for f in COMMANDS["group"].fields}
+    assert field_names == {"name_column", "duration_column", "fps", "sheets"}
 
 
 def test_getty_ids_project_name_is_required():
@@ -60,4 +62,4 @@ def test_only_sort_has_an_analyzer_for_now():
 
 
 def test_fields_without_options_source_default_to_none():
-    assert {f.name: f for f in COMMANDS["sort"].fields}["autofit"].options_source is None
+    assert {f.name: f for f in COMMANDS["sort"].fields}["categories"].options_source is None

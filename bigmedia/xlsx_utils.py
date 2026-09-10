@@ -9,6 +9,7 @@ import copy
 from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, PatternFill
 
 
 def iter_xlsx_files(path, exclude_suffix=None):
@@ -127,6 +128,19 @@ def copy_sheet_verbatim(src_ws, dst_ws, max_row=None, max_col=None):
     dst_ws.freeze_panes = src_ws.freeze_panes
 
 
+# Sheets that are a copy of a whole EDL rather than a generated/clip-list
+# tab: the "Worksheet" backup `sort`/`dedupe`/`group` write, and the raw
+# master/XML tabs the edit team leaves in hand-made workbooks (Czech
+# "Kopie listu" = "copy of sheet"). These stay a verbatim copy of the
+# input -- the styling pass must never touch them.
+BACKUP_SHEET_PATTERNS = ("worksheet", "master xml", "kopie listu", "copy of")
+
+
+def is_backup_sheet(title) -> bool:
+    t = (title or "").strip().lower()
+    return any(p in t for p in BACKUP_SHEET_PATTERNS)
+
+
 # Excel column widths are measured in characters of the default font, so a
 # character count plus a little padding is a good enough proxy for "wide
 # enough to read without dragging the edge".
@@ -135,21 +149,17 @@ AUTOFIT_MIN_WIDTH = 10
 AUTOFIT_MAX_WIDTH = 60
 
 
-def measure_column_widths(rows, headers=None, min_width=AUTOFIT_MIN_WIDTH,
-                          max_width=AUTOFIT_MAX_WIDTH, padding=AUTOFIT_PADDING):
+def measure_column_widths(rows):
     """Width per column index (1-based) sized to the longest value in it.
 
-    `rows` is an iterable of value sequences; `headers` is an optional extra
-    sequence measured alongside them, so a column whose header is longer than
-    any of its data still fits. Clamped to [min_width, max_width]: without a
-    max, one pathological clip name makes the sheet unusable sideways.
+    `rows` is an iterable of value sequences (feed the header row in as one
+    of them if a column's header can be wider than its data). Clamped to
+    [AUTOFIT_MIN_WIDTH, AUTOFIT_MAX_WIDTH]: without a max, one pathological
+    clip name makes the sheet unusable sideways. Iterates `rows` lazily so a
+    generator of every cell value isn't fully materialized first.
     """
     longest = {}
-    sources = []
-    if headers:
-        sources.append(headers)
-    sources.extend(rows)
-    for values in sources:
+    for values in rows:
         for c, val in enumerate(values, start=1):
             if val is None:
                 continue
@@ -157,7 +167,7 @@ def measure_column_widths(rows, headers=None, min_width=AUTOFIT_MIN_WIDTH,
             if n > longest.get(c, 0):
                 longest[c] = n
     return {
-        c: min(max(n + padding, min_width), max_width)
+        c: min(max(n + AUTOFIT_PADDING, AUTOFIT_MIN_WIDTH), AUTOFIT_MAX_WIDTH)
         for c, n in longest.items()
     }
 
@@ -178,8 +188,7 @@ def apply_uniform_data_font(ws, font, min_row=2):
             cell.font = copy.copy(font)
 
 
-def measure_header_widths(worksheets, min_width=AUTOFIT_MIN_WIDTH,
-                          max_width=AUTOFIT_MAX_WIDTH, padding=AUTOFIT_PADDING):
+def measure_header_widths(worksheets):
     """Width per HEADER NAME, measured across several sheets at once.
 
     Keyed by header rather than column index because commands that insert
@@ -203,7 +212,7 @@ def measure_header_widths(worksheets, min_width=AUTOFIT_MIN_WIDTH,
                     best = n
             longest[header] = best
     return {
-        h: min(max(n + padding, min_width), max_width)
+        h: min(max(n + AUTOFIT_PADDING, AUTOFIT_MIN_WIDTH), AUTOFIT_MAX_WIDTH)
         for h, n in longest.items()
     }
 
@@ -217,44 +226,82 @@ def apply_header_widths(ws, widths):
             ws.column_dimensions[get_column_letter(c)].width = widths[header]
 
 
-# Real delivery headers are white bold text; the fill is what makes them
-# legible, and it's routinely present on only some columns.
-DEFAULT_HEADER_FILL_COLOR = "FF000000"
+# Real delivery headers are white bold text on a dark fill; the styling is
+# now unconditional -- a fixed black fill with a white bold font.
+HEADER_FILL = PatternFill("solid", fgColor="FF000000")
+_HEADER_FONT_COLOR = "FFFFFFFF"
+_FALLBACK_DATA_FONT = Font(name="Calibri", size=11)
 
 
-def dominant_header_fill(worksheets, default_color=DEFAULT_HEADER_FILL_COLOR):
-    """The header fill to standardize on: the most common solid fill already
-    used by any header cell across the given sheets, so the output keeps the
-    file's own house colour rather than one invented here. Falls back to
-    `default_color` when no header cell carries a fill at all."""
-    from openpyxl.styles import PatternFill
-
-    counts = {}
-    for ws in worksheets:
-        for c in range(1, ws.max_column + 1):
-            cell = ws.cell(row=1, column=c)
-            if cell.value is None:
-                continue
-            fill = cell.fill
-            if fill is None or fill.patternType != "solid":
-                continue
-            rgb = getattr(fill.fgColor, "rgb", None)
-            if isinstance(rgb, str):
-                counts[rgb] = counts.get(rgb, 0) + 1
-    if counts:
-        color = max(counts.items(), key=lambda kv: kv[1])[0]
-    else:
-        color = default_color
-    return PatternFill("solid", fgColor=color)
-
-
-def apply_uniform_header_fill(ws, fill):
-    """Give every non-empty header cell the same fill. Leaves the header
-    font alone -- only the fill is normalized."""
+def apply_header_style(ws):
+    """Row 1: every non-empty header cell gets the fixed black fill and a
+    white bold font, keeping the cell's own family and size."""
     for c in range(1, ws.max_column + 1):
         cell = ws.cell(row=1, column=c)
-        if cell.value is not None:
-            cell.fill = copy.copy(fill)
+        if cell.value is None:
+            continue
+        cell.fill = copy.copy(HEADER_FILL)
+        f = cell.font
+        cell.font = Font(
+            name=f.name or _FALLBACK_DATA_FONT.name,
+            size=f.size or _FALLBACK_DATA_FONT.size,
+            bold=True,
+            color=_HEADER_FONT_COLOR,
+        )
+
+
+def sample_data_font(ws, col_idx):
+    """The row-2 font of column `col_idx`, to standardize data cells on.
+    Calibri 11 when there is no row 2 or the cell carries no font."""
+    if ws.max_row < 2:
+        return copy.copy(_FALLBACK_DATA_FONT)
+    f = ws.cell(row=2, column=col_idx).font
+    if f is None or f.name is None:
+        return copy.copy(_FALLBACK_DATA_FONT)
+    return copy.copy(f)
+
+
+def first_data_font(worksheets):
+    """First non-empty data cell (row 2+) font across the given sheets;
+    Calibri 11 fallback."""
+    for ws in worksheets:
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
+            for cell in row:
+                if cell.value is not None and cell.font is not None and cell.font.name is not None:
+                    return copy.copy(cell.font)
+    return copy.copy(_FALLBACK_DATA_FONT)
+
+
+def style_output_sheets(sheets, *, width_by, data_font):
+    """The single styling pass every in-scope command runs on its finished
+    output sheets. Skips any sheet titled "Worksheet". `width_by` is
+    "index" (columns fixed across sheets) or "header" (columns shift, key
+    widths by header name). Applies shared column widths clamped to
+    [10, 60], the uniform `data_font` to row 2+, and apply_header_style to
+    row 1."""
+    targets = [ws for ws in sheets if ws.title != "Worksheet"]
+    if not targets:
+        return
+    if width_by == "index":
+        # Feed every row -- header row included -- of every target sheet as a
+        # plain row. Header text and data are then positionally self-aligned
+        # within each sheet, and the cross-sheet max is still taken.
+        widths = measure_column_widths(
+            [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
+            for ws in targets
+            for r in range(1, ws.max_row + 1)
+        )
+        for ws in targets:
+            apply_column_widths(ws, widths)
+    elif width_by == "header":
+        widths = measure_header_widths(targets)
+        for ws in targets:
+            apply_header_widths(ws, widths)
+    else:
+        raise ValueError(f"width_by must be 'index' or 'header', got {width_by!r}")
+    for ws in targets:
+        apply_uniform_data_font(ws, data_font)
+        apply_header_style(ws)
 
 
 def analyze_files(paths):

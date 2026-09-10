@@ -46,3 +46,11 @@ def test_delete_preset(db_path):
     save_preset(db_path, "sort", "A", {"name_column": "x"})
     delete_preset(db_path, "sort", "A")
     assert get_preset(db_path, "sort", "A") is None
+
+
+def test_preset_with_removed_key_loads_without_error(db_path):
+    # a preset saved before the output-formatting fields were removed still
+    # loads -- unknown keys are simply ignored by _build_kwargs / parse_field.
+    save_preset(db_path, "sort", "old", {"name_column": "Clip Name", "autofit": True,
+                                         "min_width": 8, "max_width": 60})
+    assert get_preset(db_path, "sort", "old")["name_column"] == "Clip Name"

@@ -180,3 +180,20 @@ def test_dedupe_workbook_falls_back_to_name_column(tmp_path):
     result = dedupe_workbook(str(src_path), str(out_path))
     assert result["kept"] == 1
     assert result["dropped"] == 1
+
+
+def test_dedupe_output_sheets_are_styled(sample_master, tmp_path):
+    from openpyxl import load_workbook
+    out = tmp_path / "out.xlsx"
+    dedupe_workbook(str(sample_master), str(out))
+    wb = load_workbook(str(out))
+    for t in ("Deduped", "Duplicates"):
+        ws = wb[t]
+        h = ws.cell(row=1, column=1)
+        assert h.fill.fgColor.rgb == "FF000000"
+        assert h.font.bold and h.font.color.rgb == "FFFFFFFF"
+        assert 10 <= ws.column_dimensions["A"].width <= 60
+    # backup untouched
+    bak = wb["Worksheet"]
+    src = load_workbook(str(sample_master)).active
+    assert bak.cell(row=1, column=1).value == src.cell(row=1, column=1).value

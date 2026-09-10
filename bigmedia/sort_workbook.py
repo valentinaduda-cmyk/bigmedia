@@ -27,11 +27,8 @@ from .xlsx_utils import (
     write_header_row,
     write_data_row,
     copy_sheet_verbatim,
-    measure_column_widths,
-    apply_column_widths,
-    apply_uniform_data_font,
-    AUTOFIT_MIN_WIDTH,
-    AUTOFIT_MAX_WIDTH,
+    style_output_sheets,
+    sample_data_font,
 )
 
 # Real delivery files aren't consistent about the clip-name header: some
@@ -118,9 +115,7 @@ def analyze_sort(paths, name_column="Clip Name"):
 
 
 def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=None,
-                  categories=None, skip_categories=None,
-                  autofit=False, min_width=AUTOFIT_MIN_WIDTH, max_width=AUTOFIT_MAX_WIDTH,
-                  uniform_font=False):
+                  categories=None, skip_categories=None):
     category_order = category_order or CATEGORY_ORDER
     category_order = resolve_categories(category_order, categories, skip_categories)
 
@@ -160,21 +155,10 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
     ws_backup = wb_out.create_sheet(title="Worksheet")
     copy_sheet_verbatim(ws_src, ws_backup, max_row, max_col)
 
-    # Autofit is measured once, over the whole input, so every category
-    # sheet ends up with identical widths -- a workbook whose columns jump
-    # around as you switch tabs is worse than one that's uniformly narrow.
-    autofit_widths = None
-    if autofit:
-        autofit_widths = measure_column_widths(
-            ([ws_src.cell(row=r, column=c).value for c in range(1, max_col + 1)]
-             for r in range(2, max_row + 1)),
-            headers=[h.value for h in header_cells],
-            min_width=min_width,
-            max_width=max_width,
-        )
-
+    category_sheets = []
     for cat in category_order:
         ws_out = wb_out.create_sheet(title=cat[:31])
+        category_sheets.append(ws_out)
         write_header_row(ws_out, header_cells, ws_src.row_dimensions[1].height)
 
         for out_r, src_r in enumerate(rows_by_cat.get(cat, []), start=2):
@@ -182,14 +166,15 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
             values = [ws_src.cell(row=src_r, column=c).value for c in range(1, max_col + 1)]
             write_data_row(ws_out, out_r, values, col_font, col_numfmt, fill)
 
-        if autofit_widths:
-            apply_column_widths(ws_out, autofit_widths)
-        else:
-            for col_letter, width in col_widths.items():
-                ws_out.column_dimensions[col_letter].width = width
-        if uniform_font:
-            apply_uniform_data_font(ws_out, col_font[name_col_idx - 1])
+        for col_letter, width in col_widths.items():
+            ws_out.column_dimensions[col_letter].width = width
         ws_out.freeze_panes = "A2"
+
+    style_output_sheets(
+        category_sheets,
+        width_by="index",
+        data_font=sample_data_font(ws_src, name_col_idx),
+    )
 
     wb_out.save(out_path)
     return {cat: len(rows) for cat, rows in rows_by_cat.items()}
