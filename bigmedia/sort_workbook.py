@@ -90,13 +90,31 @@ def count_categories(paths, name_column="Clip Name"):
     counts = {category: 0 for category in CATEGORY_ORDER}
     for path in paths:
         wb_src = load_workbook(path, read_only=True, data_only=True)
-        ws_src = wb_src.active
-        name_candidates = [name_column] + [a for a in NAME_COLUMN_ALIASES if a != name_column]
-        name_col_idx = find_column_any(ws_src, name_candidates)
-        for row in ws_src.iter_rows(min_row=2, min_col=name_col_idx, max_col=name_col_idx):
-            counts[classify(row[0].value)] += 1
-        wb_src.close()
+        try:
+            ws_src = wb_src.active
+            name_candidates = [name_column] + [a for a in NAME_COLUMN_ALIASES if a != name_column]
+            name_col_idx = find_column_any(ws_src, name_candidates)
+            for row in ws_src.iter_rows(min_row=2, min_col=name_col_idx, max_col=name_col_idx):
+                counts[classify(row[0].value)] += 1
+        finally:
+            wb_src.close()
     return counts
+
+
+def analyze_sort(paths, name_column="Clip Name"):
+    """Analyze step for the web UI's Sort form: classify every clip without
+    writing output and report which categories are worth keeping (a
+    suggestion) plus the full per-category count (a display annotation). A
+    name column that isn't in the file is a warning, not an error -- the
+    user can pick the right column from the dropdown and re-run analysis."""
+    try:
+        counts = count_categories(paths, name_column=name_column)
+    except ValueError as exc:
+        return {"warnings": [str(exc)]}
+    return {
+        "suggestions": {"categories": [c for c, n in counts.items() if n > 0]},
+        "annotations": {"categories": counts},
+    }
 
 
 def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=None,

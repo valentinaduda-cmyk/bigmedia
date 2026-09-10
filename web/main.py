@@ -13,8 +13,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from bigmedia.group_duplicates import group_duplicates_workbook
-from bigmedia.sort_workbook import count_categories
 
+from web.analyze import run_analysis
 from web.auth import RedirectToLogin, check_password, require_login
 from web.commands import COMMANDS, SORT_CATEGORIES
 from web.files import parse_field, reject_non_xlsx, zip_files
@@ -155,24 +155,26 @@ def _save_uploads(files: List[UploadFile], dest_dir: Path) -> list:
     return saved
 
 
-@app.post("/commands/sort/analyze", dependencies=[Depends(require_login)])
-async def sort_analyze(request: Request, files: List[UploadFile] = File(...)):
+@app.post("/commands/{slug}/analyze", dependencies=[Depends(require_login)])
+async def command_analyze(request: Request, slug: str, files: List[UploadFile] = File(...)):
+    spec = _command_or_404(slug)
+    if spec.upload_mode in ("pair", "fix_getty"):
+        raise HTTPException(status_code=404)
     bad = reject_non_xlsx([f.filename for f in files])
     if bad:
         return JSONResponse({"error": f"Not an .xlsx file: {', '.join(bad)}"}, status_code=400)
-
     form = await request.form()
-    name_column = form.get("name_column") or "Clip Name"
-
     with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
-        inputs = _save_uploads(files, tmp_dir)
+        paths = _save_uploads(files, Path(tmp))
         try:
-            counts = count_categories([str(p) for p in inputs], name_column=name_column)
+            data = run_analysis(spec, [str(p) for p in paths], form)
+            # Build the response inside the try so a serialization failure
+            # (e.g. a non-JSON-safe value slipping through) still degrades to
+            # this route's JSON 400 rather than an unhandled 500.
+            return JSONResponse(data)
         except Exception as exc:
+            logger.exception("analyze failed for %s", slug)
             return JSONResponse({"error": str(exc)}, status_code=400)
-
-    return JSONResponse({"counts": counts})
 
 
 @app.post("/commands/{slug}", dependencies=[Depends(require_login)])
@@ -183,6 +185,22 @@ async def command_submit(request: Request, slug: str, files: List[UploadFile] = 
 
     form = await request.form()
     kwargs = _build_kwargs(form, spec.fields)
+
+    # The wizard auto-unchecks empty category boxes; if the user approves a
+    # form with every box unchecked, `categories` posts nothing and Run would
+    # otherwise keep ALL categories (parse_field [] -> None -> keep-all).
+    # `categories_present` is a hidden marker the Sort template emits, so we
+    # can tell "user cleared every box" from "API caller omitted the field".
+    # Skip everything but the always-on "3rd parties" fallback in that case.
+    # `categories` and `skip_categories` are mutually exclusive in
+    # sort_workbook, so only set skip_categories when categories is falsy.
+    if (
+        spec.slug == "sort"
+        and form.get("categories_present")
+        and not kwargs.get("categories")
+        and not kwargs.get("skip_categories")
+    ):
+        kwargs["skip_categories"] = list(SORT_CATEGORIES)
 
     bad = reject_non_xlsx([f.filename for f in files])
     if bad:

@@ -8,7 +8,7 @@ from bigmedia.fu_grid import fu_grid_workbook
 from bigmedia.getty_ids import build_getty_id_report
 from bigmedia.getty_split import fix_getty_split
 from bigmedia.group_duplicates import group_duplicates_workbook
-from bigmedia.sort_workbook import sort_workbook
+from bigmedia.sort_workbook import sort_workbook, analyze_sort
 from bigmedia.xlsx_utils import AUTOFIT_MAX_WIDTH, AUTOFIT_MIN_WIDTH
 
 
@@ -19,6 +19,7 @@ class FieldSpec:
     type: str  # "text" | "number" | "checkbox" | "list"
     default: Any = None
     required: bool = False
+    options_source: str = None  # None | "headers" | "sheets"
 
 
 @dataclass
@@ -29,16 +30,17 @@ class CommandSpec:
     func: Callable
     fields: list
     output_suffix: str
+    analyze: Callable = None
 
 
-_NAME_COLUMN = FieldSpec("name_column", "Filename column", "text", "Clip Name")
-_DURATION_COLUMN = FieldSpec("duration_column", "Duration column", "text", "Clip Duration")
+_NAME_COLUMN = FieldSpec("name_column", "Filename column", "text", "Clip Name", options_source="headers")
+_DURATION_COLUMN = FieldSpec("duration_column", "Duration column", "text", "Clip Duration", options_source="headers")
 _FPS = FieldSpec("fps", "Frame rate (fps)", "number", 25)
 
 COMMANDS = {
     "sort": CommandSpec(
         slug="sort", title="Sort", upload_mode="batch", func=sort_workbook,
-        output_suffix="sorted",
+        output_suffix="sorted", analyze=analyze_sort,
         fields=[
             _NAME_COLUMN,
             FieldSpec("categories", "Categories to keep (comma-separated, blank = all)", "list"),
@@ -71,7 +73,7 @@ COMMANDS = {
         slug="fu-grid", title="FU Grid", upload_mode="batch", func=fu_grid_workbook,
         output_suffix="fu_grid",
         fields=[
-            FieldSpec("sheet", "Source sheet", "text", "3rd parties"),
+            FieldSpec("sheet", "Source sheet", "text", "3rd parties", options_source="sheets"),
             _NAME_COLUMN, _DURATION_COLUMN, _FPS,
         ],
     ),

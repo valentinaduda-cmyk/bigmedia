@@ -344,8 +344,10 @@ EOF
   - `CommandSpec` gains `analyze: Callable | None = None`.
   - `_NAME_COLUMN` and `_DURATION_COLUMN` module constants gain
     `options_source="headers"`.
-  - `COMMANDS["group"]`'s `sheets` field and `COMMANDS["fu-grid"]`'s
-    `sheet` field gain `options_source="sheets"`.
+  - `COMMANDS["fu-grid"]`'s `sheet` field gains `options_source="sheets"`.
+    Group's `sheets` field is left alone — it is a multi-value `list` field
+    and a single `<select>` would regress it; it gets `options_source` when
+    group's own analyzer lands (out of scope here).
   - `COMMANDS["sort"].analyze is analyze_sort`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -361,11 +363,14 @@ def test_name_and_duration_columns_are_header_dropdowns():
         by_name = {f.name: f for f in COMMANDS[slug].fields}
         assert by_name["name_column"].options_source == "headers"
     assert {f.name: f for f in COMMANDS["group"].fields}["duration_column"].options_source == "headers"
+    # getty-ids and compare share _NAME_COLUMN too — they get the header dropdown for free
+    assert {f.name: f for f in COMMANDS["getty-ids"].fields}["name_column"].options_source == "headers"
 
 
 def test_sheet_fields_are_sheet_dropdowns():
-    assert {f.name: f for f in COMMANDS["group"].fields}["sheets"].options_source == "sheets"
     assert {f.name: f for f in COMMANDS["fu-grid"].fields}["sheet"].options_source == "sheets"
+    # group's multi-value "sheets" field stays a text field until group's analyzer lands
+    assert {f.name: f for f in COMMANDS["group"].fields}["sheets"].options_source is None
 
 
 def test_only_sort_has_an_analyzer_for_now():
@@ -426,10 +431,8 @@ In `web/commands.py`:
 
 5. In `COMMANDS["sort"]`, add `analyze=analyze_sort,` to the `CommandSpec(...)` call.
 
-6. In `COMMANDS["group"]`, change the `sheets` field to:
-   ```python
-   FieldSpec("sheets", "Sheets to group (comma-separated, blank = default set)", "list", options_source="sheets"),
-   ```
+6. Leave `COMMANDS["group"]`'s `sheets` field unchanged (multi-value list;
+   deferred — see Interfaces note).
 
 7. In `COMMANDS["fu-grid"]`, change the `sheet` field to:
    ```python
@@ -440,6 +443,15 @@ In `web/commands.py`:
 
 Run: `python -m pytest tests/test_web_commands.py -v`
 Expected: PASS (all, including the pre-existing `test_sort_fields_match_cli_options`)
+
+- [ ] **Step 4b: Run the full suite — catch breakage in other web test files**
+
+Run: `python -m pytest -q`
+Expected: PASS. If `tests/test_web_final_fixes.py` or `tests/test_web_presets_ui.py`
+assert on `FieldSpec` internals (e.g. `_NAME_COLUMN.type`), only the new
+`options_source` attribute changed — update those assertions to keep their
+intent and note it in the commit body. Template-level assertions there are
+not affected yet (the template changes land in Task 6).
 
 - [ ] **Step 5: Commit**
 
@@ -892,10 +904,16 @@ def test_sort_still_has_category_checkboxes(monkeypatch):
     assert 'class="category-name"' in html
 
 
-def test_group_sheets_field_is_sheet_select(monkeypatch):
-    html = _client(monkeypatch).get("/commands/group").text
-    assert '<select name="sheets"' in html
+def test_fu_grid_sheet_field_is_sheet_select(monkeypatch):
+    html = _client(monkeypatch).get("/commands/fu-grid").text
+    assert '<select name="sheet"' in html
     assert 'data-source="sheets"' in html
+
+
+def test_group_sheets_field_stays_text_for_now(monkeypatch):
+    # group's multi-value "sheets" field is deferred until group's analyzer
+    html = _client(monkeypatch).get("/commands/group").text
+    assert '<input type="text" name="sheets"' in html
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1241,7 +1259,7 @@ EOF
 | Non-xlsx / corrupt → 400 on analyze | Task 5 (`test_analyze_rejects_non_xlsx`; `except Exception` path) |
 | Edge: no file picked → no analyze call | Task 6 (`analyze()` early-returns on empty `files`) |
 | Edge: single-sheet file → picker still populates | Task 1 covers 1-sheet output; JS populates from any non-empty list |
-| Out of scope: other commands' analyzers, upload caching | Not implemented; framework left ready (Task 3 marks group/fu-grid sheet fields) |
+| Out of scope: other commands' analyzers, upload caching | Not implemented; framework left ready (Task 3 marks fu-grid's `sheet` field; group's multi-value `sheets` deferred) |
 
 No uncovered spec requirements.
 

@@ -7,6 +7,7 @@ sheet with its styling" from scratch.
 """
 import copy
 from pathlib import Path
+from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 
 
@@ -254,3 +255,68 @@ def apply_uniform_header_fill(ws, fill):
         cell = ws.cell(row=1, column=c)
         if cell.value is not None:
             cell.fill = copy.copy(fill)
+
+
+def analyze_files(paths):
+    """Read-only inspection of one or more clip-list workbooks, for the web
+    UI's analyze-and-suggest step. Returns the union of the active sheets'
+    header names, every sheet's name and (header-excluded) row count summed
+    across files, and warnings for files that won't open or whose columns
+    disagree with the first readable file. Never raises for a bad file --
+    it lands in "warnings" and the others are still processed.
+
+    Header values are stringified (``str(value).strip()``) so a stray
+    ``datetime``/number cell in row 1 still yields a JSON-serializable
+    header; whitespace-only cells are still dropped."""
+    headers = []
+    seen_headers = set()
+    first_header_set = None
+    first_name = None
+    sheet_rows = {}
+    sheet_order = []
+    warnings = []
+
+    for path in paths:
+        name = Path(path).name
+        wb = None
+        try:
+            wb = load_workbook(path, read_only=True, data_only=True)
+
+            active = wb.active
+            file_headers = [
+                str(c.value).strip() for c in next(active.iter_rows(min_row=1, max_row=1), [])
+                if c.value is not None and str(c.value).strip() != ""
+            ]
+            for h in file_headers:
+                if h not in seen_headers:
+                    seen_headers.add(h)
+                    headers.append(h)
+
+            if first_header_set is None:
+                first_header_set = set(file_headers)
+                first_name = name
+            elif set(file_headers) != first_header_set:
+                warnings.append(f"{name}: columns differ from {first_name}")
+
+            for title in wb.sheetnames:
+                ws = wb[title]
+                rows = ws.max_row
+                if rows is None:
+                    rows = sum(1 for _ in ws.iter_rows())
+                count = max(rows - 1, 0)
+                if title not in sheet_rows:
+                    sheet_rows[title] = 0
+                    sheet_order.append(title)
+                sheet_rows[title] += count
+
+        except Exception as exc:  # openpyxl raises several unrelated types
+            warnings.append(f"{name}: could not read ({exc})")
+        finally:
+            if wb is not None:
+                wb.close()
+
+    return {
+        "headers": headers,
+        "sheets": [{"name": t, "rows": sheet_rows[t]} for t in sheet_order],
+        "warnings": warnings,
+    }
