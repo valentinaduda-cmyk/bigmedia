@@ -265,6 +265,8 @@ def fix_getty_split(old_path, new_path, out_path, name_column="Clip Name"):
     getty_sheets = [wb_out[t] for t in wb_out.sheetnames
                     if t in (videos_title, stills_title)]
     if getty_sheets:
+        # index-keyed widths assume both Getty sheets share a column layout
+        # -- true for `sort` output, the documented input to this command.
         style_output_sheets(getty_sheets, width_by="index",
                             data_font=first_data_font(getty_sheets))
 

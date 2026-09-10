@@ -51,6 +51,7 @@ from .xlsx_utils import (
     copy_sheet_verbatim,
     style_output_sheets,
     first_data_font,
+    is_backup_sheet,
 )
 
 DEFAULT_SHEETS = ["AP", "Getty Videos", "Getty Stills", "Reuters", "Shutterstock", "BBC"]
@@ -204,6 +205,7 @@ def _process_sheet(ws_src, wb_out, title, name_column, duration_column, fps):
     total_seconds_over_4s_formula = f'=SUMIF({seconds_range},">{DURATION_HIGHLIGHT_THRESHOLD}")'
 
     summary_row = out_r + 1  # one blank spacer row after the last data row
+    summary_cells = []
     for i, (label, value) in enumerate([
         ("Total clips", total_clips),
         ("Total unique clips", total_unique),
@@ -215,6 +217,10 @@ def _process_sheet(ws_src, wb_out, title, name_column, duration_column, fps):
         label_cell = ws_out.cell(row=r, column=name_col_idx, value=label)
         label_cell.font = Font(bold=True)
         ws_out.cell(row=r, column=name_col_idx + 1, value=value)
+        # Both the label and its value cell -- the styling pass runs over
+        # row 2..max_row and would otherwise flatten this bold totals block.
+        summary_cells.append((r, name_col_idx))
+        summary_cells.append((r, name_col_idx + 1))
 
     return {
         "total_clips": total_clips,
@@ -222,6 +228,7 @@ def _process_sheet(ws_src, wb_out, title, name_column, duration_column, fps):
         "total_clips_over_4s": total_over_4s,
         "total_seconds": total_seconds,
         "total_seconds_over_4s": total_seconds_over_4s,
+        "summary_cells": summary_cells,
     }
 
 
@@ -254,11 +261,22 @@ def group_duplicates_workbook(
 
     # Formatting runs last, over the finished workbook, because grouping
     # inserts columns as it goes -- measuring earlier would size the wrong
-    # table. The "Worksheet" backup is deliberately excluded: it is a
-    # verbatim copy of the input and must stay one.
-    formatted = [wb_out[t] for t in wb_out.sheetnames if t != "Worksheet"]
+    # table. The "Worksheet" backup AND any raw backup/dump tab ("Master
+    # XML", "Kopie listu ...") are excluded: they are verbatim copies of
+    # the input and must stay one. ("worksheet" is itself a backup pattern,
+    # so this drops the "Worksheet" tab too.) Real pass-through clip-list
+    # sheets (GFX, Getty Unknown, 3rd parties) are still styled for
+    # within-file consistency.
+    formatted = [wb_out[t] for t in wb_out.sheetnames if not is_backup_sheet(t)]
     if formatted:
         style_output_sheets(formatted, width_by="header", data_font=first_data_font(formatted))
+        # style_output_sheets' uniform data font runs over row 2..max_row,
+        # which includes each processed sheet's bold totals block sitting
+        # below the data -- re-bold those cells.
+        for title, counts in results.items():
+            ws = wb_out[title]
+            for row, col in counts.get("summary_cells", []):
+                ws.cell(row=row, column=col).font = Font(bold=True)
 
     wb_out.save(out_path)
     return results

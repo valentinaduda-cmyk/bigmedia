@@ -1,8 +1,15 @@
 import datetime
 
 from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
-from bigmedia.xlsx_utils import analyze_files
+from bigmedia.xlsx_utils import (
+    analyze_files,
+    HEADER_FILL, apply_header_style, sample_data_font, first_data_font,
+    style_output_sheets, measure_column_widths,
+    AUTOFIT_MIN_WIDTH, AUTOFIT_MAX_WIDTH, AUTOFIT_PADDING,
+    is_backup_sheet,
+)
 
 
 def _make(path, sheets):
@@ -98,15 +105,6 @@ def test_lazily_parsed_xml_failure_warns_and_others_still_processed(tmp_path):
     assert any("corrupt.xlsx" in w and "could not read" in w for w in result["warnings"])
 
 
-import copy
-from openpyxl.styles import Font, PatternFill
-
-from bigmedia.xlsx_utils import (
-    HEADER_FILL, apply_header_style, sample_data_font, first_data_font,
-    style_output_sheets, AUTOFIT_MIN_WIDTH, AUTOFIT_MAX_WIDTH,
-)
-
-
 def _sheet(wb, title, rows):
     ws = wb.create_sheet(title=title)
     for row in rows:
@@ -192,3 +190,33 @@ def test_style_output_sheets_skips_worksheet_tab():
     ws["A1"].fill = PatternFill()  # no fill
     style_output_sheets([ws], width_by="index", data_font=Font(name="Calibri", size=11))
     assert ws["A1"].fill.patternType is None  # untouched
+
+
+def test_measure_column_widths_clamp_and_padding():
+    widths = measure_column_widths([
+        ["x" * 200, "y" * 20, "z"],
+    ])
+    assert widths[1] == AUTOFIT_MAX_WIDTH                 # 200 chars -> clamped
+    assert widths[2] == 20 + AUTOFIT_PADDING              # mid-range -> len + padding
+    assert widths[3] == AUTOFIT_MIN_WIDTH                 # 1 char -> clamped up
+
+
+def test_apply_header_style_nameless_source_font_gets_fallback():
+    wb = Workbook()
+    ws = wb.active
+    ws["A1"] = "Clip Name"
+    ws["A1"].font = Font()  # no name, no size
+    apply_header_style(ws)
+    assert ws["A1"].font.name is not None
+    assert ws["A1"].font.size is not None
+    assert ws["A1"].font.bold is True
+
+
+def test_is_backup_sheet_matches_worksheet_and_dump_tabs():
+    assert is_backup_sheet("Master XML")
+    assert is_backup_sheet("EP01 - Master XML")
+    assert is_backup_sheet("Kopie listu 1")
+    assert is_backup_sheet("Worksheet")
+    assert is_backup_sheet("Copy of Sheet1")
+    assert not is_backup_sheet("Getty Videos")
+    assert not is_backup_sheet("3rd parties")

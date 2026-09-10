@@ -155,8 +155,10 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
     ws_backup = wb_out.create_sheet(title="Worksheet")
     copy_sheet_verbatim(ws_src, ws_backup, max_row, max_col)
 
+    category_sheets = []
     for cat in category_order:
         ws_out = wb_out.create_sheet(title=cat[:31])
+        category_sheets.append(ws_out)
         write_header_row(ws_out, header_cells, ws_src.row_dimensions[1].height)
 
         for out_r, src_r in enumerate(rows_by_cat.get(cat, []), start=2):
@@ -169,7 +171,7 @@ def sort_workbook(src_path, out_path, name_column="Clip Name", category_order=No
         ws_out.freeze_panes = "A2"
 
     style_output_sheets(
-        [wb_out[c[:31]] for c in category_order],
+        category_sheets,
         width_by="index",
         data_font=sample_data_font(ws_src, name_col_idx),
     )

@@ -128,6 +128,19 @@ def copy_sheet_verbatim(src_ws, dst_ws, max_row=None, max_col=None):
     dst_ws.freeze_panes = src_ws.freeze_panes
 
 
+# Sheets that are a copy of a whole EDL rather than a generated/clip-list
+# tab: the "Worksheet" backup `sort`/`dedupe`/`group` write, and the raw
+# master/XML tabs the edit team leaves in hand-made workbooks (Czech
+# "Kopie listu" = "copy of sheet"). These stay a verbatim copy of the
+# input -- the styling pass must never touch them.
+BACKUP_SHEET_PATTERNS = ("worksheet", "master xml", "kopie listu", "copy of")
+
+
+def is_backup_sheet(title) -> bool:
+    t = (title or "").strip().lower()
+    return any(p in t for p in BACKUP_SHEET_PATTERNS)
+
+
 # Excel column widths are measured in characters of the default font, so a
 # character count plus a little padding is a good enough proxy for "wide
 # enough to read without dragging the edge".
@@ -136,20 +149,17 @@ AUTOFIT_MIN_WIDTH = 10
 AUTOFIT_MAX_WIDTH = 60
 
 
-def measure_column_widths(rows, headers=None):
+def measure_column_widths(rows):
     """Width per column index (1-based) sized to the longest value in it.
 
-    `rows` is an iterable of value sequences; `headers` is an optional extra
-    sequence measured alongside them, so a column whose header is longer than
-    any of its data still fits. Clamped to [AUTOFIT_MIN_WIDTH, AUTOFIT_MAX_WIDTH]:
-    without a max, one pathological clip name makes the sheet unusable sideways.
+    `rows` is an iterable of value sequences (feed the header row in as one
+    of them if a column's header can be wider than its data). Clamped to
+    [AUTOFIT_MIN_WIDTH, AUTOFIT_MAX_WIDTH]: without a max, one pathological
+    clip name makes the sheet unusable sideways. Iterates `rows` lazily so a
+    generator of every cell value isn't fully materialized first.
     """
     longest = {}
-    sources = []
-    if headers:
-        sources.append(headers)
-    sources.extend(rows)
-    for values in sources:
+    for values in rows:
         for c, val in enumerate(values, start=1):
             if val is None:
                 continue
@@ -232,7 +242,12 @@ def apply_header_style(ws):
             continue
         cell.fill = copy.copy(HEADER_FILL)
         f = cell.font
-        cell.font = Font(name=f.name, size=f.size, bold=True, color=_HEADER_FONT_COLOR)
+        cell.font = Font(
+            name=f.name or _FALLBACK_DATA_FONT.name,
+            size=f.size or _FALLBACK_DATA_FONT.size,
+            bold=True,
+            color=_HEADER_FONT_COLOR,
+        )
 
 
 def sample_data_font(ws, col_idx):
@@ -270,9 +285,7 @@ def style_output_sheets(sheets, *, width_by, data_font):
     if width_by == "index":
         # Feed every row -- header row included -- of every target sheet as a
         # plain row. Header text and data are then positionally self-aligned
-        # within each sheet, and the cross-sheet max is still taken. (Using
-        # the `headers=` param with a flat concat of all sheets' headers would
-        # misalign column indices when sibling sheets differ in column count.)
+        # within each sheet, and the cross-sheet max is still taken.
         widths = measure_column_widths(
             [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
             for ws in targets

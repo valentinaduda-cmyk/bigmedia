@@ -1,5 +1,6 @@
 import shutil
 
+import pytest
 from openpyxl import load_workbook
 
 from bigmedia.cli import main, _iter_xlsx_inputs
@@ -83,3 +84,13 @@ def test_cmd_sort_categories_flag(sample_master, tmp_path):
     main(["sort", str(sample_master), "-o", str(out), "--categories", "AP,GFX"])
 
     assert load_workbook(out).sheetnames == ["Worksheet", "AP", "GFX", "3rd parties"]
+
+
+def test_removed_styling_flags_no_longer_parse(sample_master, tmp_path):
+    # The old opt-in styling flags were dropped, not kept as no-ops --
+    # passing one is an argparse error.
+    out = tmp_path / "out.xlsx"
+    with pytest.raises(SystemExit):
+        main(["sort", str(sample_master), "-o", str(out), "--autofit"])
+    with pytest.raises(SystemExit):
+        main(["group", str(sample_master), "-o", str(out), "--uniform-header"])

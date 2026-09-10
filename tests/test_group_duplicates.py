@@ -83,7 +83,8 @@ def test_group_duplicates_reorders_and_sums_getty_videos(sample_sorted_master, t
     assert ws.cell(row=16, column=name_col).value == "Total Seconds for clips >4s"
     assert ws.cell(row=16, column=name_col + 1).value == f'=SUMIF({seconds_col_letter}2:{seconds_col_letter}10,">4")'
 
-    assert results["Getty Videos"] == {
+    counts = {k: v for k, v in results["Getty Videos"].items() if k != "summary_cells"}
+    assert counts == {
         "total_clips": 9,
         "total_unique_clips": 6,
         "total_clips_over_4s": 1,
@@ -331,8 +332,10 @@ def test_group_output_is_always_styled(sample_sorted_master, tmp_path):
     assert styled
     for t in styled:
         ws = wb[t]
-        name_c = next(c for c in range(1, ws.max_column + 1)
-                      if ws.cell(row=1, column=c).value == "Clip Name")
+        name_c = next((c for c in range(1, ws.max_column + 1)
+                       if ws.cell(row=1, column=c).value == "Clip Name"), None)
+        if name_c is None:
+            continue
         h = ws.cell(row=1, column=name_c)
         assert h.fill.fgColor.rgb == "FF000000"
         assert h.font.bold and h.font.color.rgb == "FFFFFFFF"
@@ -346,3 +349,43 @@ def test_group_styling_leaves_worksheet_backup_alone(sample_sorted_master, tmp_p
     src = load_workbook(sample_sorted_master)["Worksheet"]
     backup = load_workbook(out_path)["Worksheet"]
     assert backup.column_dimensions["B"].width == src.column_dimensions["B"].width
+    # The verbatim backup never gets the black header fill.
+    assert backup.cell(row=1, column=2).fill.fgColor.rgb != "FF000000"
+
+
+def test_group_totals_block_stays_bold_after_styling(sample_sorted_master, tmp_path):
+    # apply_uniform_data_font runs over row 2..max_row, which covers the
+    # totals block sitting below the data -- group must re-bold it.
+    out_path = tmp_path / "out.xlsx"
+    group_duplicates_workbook(str(sample_sorted_master), str(out_path))
+
+    ws = load_workbook(out_path)["Getty Videos"]
+    label = next(ws.cell(row=r, column=c)
+                 for r in range(2, ws.max_row + 1)
+                 for c in range(1, ws.max_column + 1)
+                 if ws.cell(row=r, column=c).value == "Total clips")
+    assert label.font.bold is True
+    assert ws.cell(row=label.row, column=label.column + 1).font.bold is True
+
+
+def test_group_does_not_style_raw_backup_dump_tab(tmp_path):
+    # A hand-made workbook leaves a raw "... Master XML" dump tab whose
+    # first row is free text, not a header -- black-filling row 1 of it is
+    # wrong, so the styling pass must skip it (is_backup_sheet).
+    src_path = tmp_path / "src.xlsx"
+    wb = Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet(title="EP01 - Master XML")
+    ws.append(["raw dump line, not a header"])
+    ws.append(["GettyImages-1.mov"])
+    ap = wb.create_sheet(title="AP")
+    ap.append(["Clip Name", "Clip Duration"])
+    ap.append(["apus_clip1.mxf", "00:00:00:10"])
+    wb.save(src_path)
+
+    out_path = tmp_path / "out.xlsx"
+    group_duplicates_workbook(str(src_path), str(out_path), sheets=["AP"])
+
+    dump = load_workbook(out_path)["EP01 - Master XML"]
+    assert dump.cell(row=1, column=1).fill.fgColor.rgb != "FF000000"
+    assert dump.cell(row=1, column=1).value == "raw dump line, not a header"

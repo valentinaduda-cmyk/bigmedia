@@ -178,6 +178,17 @@ def test_compare_output_styling_is_black_white(old_version, new_version, tmp_pat
     assert wb["Summary"].column_dimensions["A"].width == 24
 
 
+def test_status_column_stays_bold_after_styling(old_version, new_version, tmp_path):
+    # The Status column (A) is deliberately bold; style_output_sheets' uniform
+    # data font runs over it, so compare_workbooks must re-bold it afterwards.
+    out = tmp_path / "styled.xlsx"
+    compare_workbooks(str(old_version), str(new_version), str(out))
+    wb = load_workbook(out)
+    ws = wb["AP added"]
+    assert ws.cell(row=2, column=1).value  # a real status row
+    assert ws.cell(row=2, column=1).font.bold is True
+
+
 def test_grouped_totals_block_is_not_counted_as_a_clip(old_version, tmp_path):
     new = _write(tmp_path / "grouped.xlsx", [("AP", ["AP-OLD-1", "GONE-CLIP"])])
     wb = load_workbook(new)
