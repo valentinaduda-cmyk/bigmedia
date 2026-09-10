@@ -111,6 +111,19 @@ def test_analyze_requires_login(monkeypatch):
     assert response.status_code == 303
 
 
+def test_analyze_route_500s_to_400_on_internal_error(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("web.main.run_analysis", _boom)
+    files = {"files": ("master.xlsx", _xlsx_bytes(["x.mov"]), "application/octet-stream")}
+    response = client.post("/commands/sort/analyze", data={"name_column": "Clip Name"}, files=files)
+    assert response.status_code == 400
+    assert "error" in response.json()
+
+
 def test_sort_run_accepts_multiple_categories_checkboxes(monkeypatch):
     client = _logged_in_client(monkeypatch)
     content = _xlsx_bytes([
