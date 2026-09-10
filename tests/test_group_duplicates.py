@@ -1,5 +1,4 @@
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from bigmedia.group_duplicates import group_duplicates_workbook
 from bigmedia.xlsx_utils import find_column
@@ -321,131 +320,29 @@ def test_group_duplicates_blank_duration_counts_as_zero(tmp_path):
     assert results["AP"]["total_seconds"] == 1  # 10 frames @25fps -> ceil to 1s
 
 
-def _widths_by_header(ws):
-    out = {}
-    for c in range(1, ws.max_column + 1):
-        h = ws.cell(row=1, column=c).value
-        if h is None:
-            continue
-        d = ws.column_dimensions.get(get_column_letter(c))
-        out[h] = d.width if d else None
-    return out
+def test_group_output_is_always_styled(sample_sorted_master, tmp_path):
+    # Styling is unconditional now: every processed and pass-through sheet
+    # (all but the verbatim "Worksheet" backup) gets black/white bold
+    # headers and header-keyed column widths, no flags required.
+    out = tmp_path / "out.xlsx"
+    group_duplicates_workbook(str(sample_sorted_master), str(out))
+    wb = load_workbook(str(out))
+    styled = [t for t in wb.sheetnames if t != "Worksheet"]
+    assert styled
+    for t in styled:
+        ws = wb[t]
+        name_c = next(c for c in range(1, ws.max_column + 1)
+                      if ws.cell(row=1, column=c).value == "Clip Name")
+        h = ws.cell(row=1, column=name_c)
+        assert h.fill.fgColor.rgb == "FF000000"
+        assert h.font.bold and h.font.color.rgb == "FFFFFFFF"
+        assert 10 <= ws.column_dimensions[get_column_letter(name_c)].width <= 60
 
 
-def test_group_autofit_gives_each_header_the_same_width_on_every_sheet(sample_sorted_master, tmp_path):
-    # Grouping inserts "Total Duration"/"Seconds" mid-table, so the same
-    # header sits at a different column index on processed vs pass-through
-    # sheets. Widths are therefore keyed by header name -- "Clip Name" must
-    # be equally readable whichever tab you open.
+def test_group_styling_leaves_worksheet_backup_alone(sample_sorted_master, tmp_path):
     out_path = tmp_path / "out.xlsx"
-    group_duplicates_workbook(str(sample_sorted_master), str(out_path), autofit=True)
-
-    wb = load_workbook(out_path)
-    seen = {}
-    for title in wb.sheetnames:
-        if title == "Worksheet":
-            continue
-        for header, width in _widths_by_header(wb[title]).items():
-            assert width is not None, f"{title}/{header} got no width"
-            if header in seen:
-                assert seen[header] == width, f"{header} differs on {title}"
-            else:
-                seen[header] = width
-    assert "Clip Name" in seen
-
-
-def test_group_autofit_respects_min_and_max(sample_sorted_master, tmp_path):
-    out_path = tmp_path / "out.xlsx"
-    group_duplicates_workbook(str(sample_sorted_master), str(out_path),
-                              autofit=True, min_width=12, max_width=25)
-
-    wb = load_workbook(out_path)
-    for header, width in _widths_by_header(wb["Getty Videos"]).items():
-        assert 12 <= width <= 25, f"{header} = {width}"
-
-
-def test_group_uniform_font_on_data_cells(sample_sorted_master, tmp_path):
-    out_path = tmp_path / "out.xlsx"
-    group_duplicates_workbook(str(sample_sorted_master), str(out_path), uniform_font=True)
-
-    wb = load_workbook(out_path)
-    seen = set()
-    for title in wb.sheetnames:
-        if title == "Worksheet":
-            continue
-        ws = wb[title]
-        for r in range(2, ws.max_row + 1):
-            for c in range(1, ws.max_column + 1):
-                f = ws.cell(row=r, column=c).font
-                seen.add((f.name, f.size, f.italic))
-    assert len(seen) == 1, f"data cells use {len(seen)} fonts: {seen}"
-
-
-def test_group_formatting_leaves_worksheet_backup_alone(sample_sorted_master, tmp_path):
-    out_path = tmp_path / "out.xlsx"
-    group_duplicates_workbook(str(sample_sorted_master), str(out_path),
-                              autofit=True, uniform_font=True)
+    group_duplicates_workbook(str(sample_sorted_master), str(out_path))
 
     src = load_workbook(sample_sorted_master)["Worksheet"]
     backup = load_workbook(out_path)["Worksheet"]
     assert backup.column_dimensions["B"].width == src.column_dimensions["B"].width
-
-
-def test_group_without_formatting_flags_is_unchanged(sample_sorted_master, tmp_path):
-    # Regression guard: the formatting options are opt-in only.
-    a = tmp_path / "a.xlsx"
-    group_duplicates_workbook(str(sample_sorted_master), str(a))
-    wb = load_workbook(a)
-    ws = wb["Getty Videos"]
-    assert ws.column_dimensions["B"].width == 45
-
-
-def test_group_uniform_header_gives_every_header_cell_the_same_fill(tmp_path):
-    # Real delivery headers are white bold text with a fill on only some
-    # columns -- the unfilled ones render as invisible white-on-white, and
-    # the inserted Total Duration/Seconds columns end up looking like the
-    # only headers on the sheet.
-    headers = ["Track", "Clip Name", "Clip Duration", "Source Reel Name"]
-    src = tmp_path / "src.xlsx"
-    wb = Workbook()
-    wb.remove(wb.active)
-    ws = wb.create_sheet("Getty Videos")
-    for c, h in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=c, value=h)
-        cell.font = Font(bold=True, color="FFFFFFFF")
-        # Only the duration column carries a fill, like the real files.
-        if h == "Clip Duration":
-            cell.fill = PatternFill("solid", fgColor="FF000000")
-    ws.cell(row=2, column=1, value="V1")
-    ws.cell(row=2, column=2, value="GettyImages-1.mov")
-    ws.cell(row=2, column=3, value="00:00:05:00")
-    ws2 = wb.create_sheet("GFX")
-    for c, h in enumerate(headers, start=1):
-        ws2.cell(row=1, column=c, value=h)
-    ws2.cell(row=2, column=2, value="7045_graphic.mov")
-    wb.save(src)
-
-    out = tmp_path / "out.xlsx"
-    group_duplicates_workbook(str(src), str(out), uniform_header=True)
-
-    wbo = load_workbook(out)
-    fills = set()
-    for title in wbo.sheetnames:
-        if title == "Worksheet":
-            continue
-        ws = wbo[title]
-        for c in range(1, ws.max_column + 1):
-            if ws.cell(row=1, column=c).value is None:
-                continue
-            f = ws.cell(row=1, column=c).fill
-            fills.add((f.patternType, f.fgColor.rgb))
-    assert len(fills) == 1, f"header cells use {len(fills)} fills: {fills}"
-    assert fills == {("solid", "FF000000")}
-
-
-def test_group_uniform_header_is_opt_in(sample_sorted_master, tmp_path):
-    out = tmp_path / "out.xlsx"
-    group_duplicates_workbook(str(sample_sorted_master), str(out))
-    ws = load_workbook(out)["Getty Videos"]
-    # Unchanged default behaviour: header fill is whatever came through.
-    assert ws.cell(row=1, column=1).fill.patternType is None

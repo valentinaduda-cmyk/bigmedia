@@ -49,13 +49,8 @@ from .timecode import tc_to_frames, frames_to_tc, frames_to_seconds_ceil
 from .xlsx_utils import (
     find_column_any,
     copy_sheet_verbatim,
-    measure_header_widths,
-    apply_header_widths,
-    dominant_header_fill,
-    apply_uniform_header_fill,
-    apply_uniform_data_font,
-    AUTOFIT_MIN_WIDTH,
-    AUTOFIT_MAX_WIDTH,
+    style_output_sheets,
+    first_data_font,
 )
 
 DEFAULT_SHEETS = ["AP", "Getty Videos", "Getty Stills", "Reuters", "Shutterstock", "BBC"]
@@ -237,11 +232,6 @@ def group_duplicates_workbook(
     name_column="Clip Name",
     duration_column="Clip Duration",
     fps=25,
-    autofit=False,
-    min_width=AUTOFIT_MIN_WIDTH,
-    max_width=AUTOFIT_MAX_WIDTH,
-    uniform_font=False,
-    uniform_header=False,
 ):
     sheets = sheets or DEFAULT_SHEETS
     wanted = {s.strip().lower() for s in sheets}
@@ -267,33 +257,8 @@ def group_duplicates_workbook(
     # table. The "Worksheet" backup is deliberately excluded: it is a
     # verbatim copy of the input and must stay one.
     formatted = [wb_out[t] for t in wb_out.sheetnames if t != "Worksheet"]
-    if autofit and formatted:
-        widths = measure_header_widths(formatted, min_width=min_width, max_width=max_width)
-        for ws in formatted:
-            apply_header_widths(ws, widths)
-    if uniform_header and formatted:
-        # Measured on the source sheets, before anything is normalized, so
-        # the file's own header colour wins over the fallback.
-        header_fill = dominant_header_fill([wb_src[t] for t in wb_src.sheetnames if t != "Worksheet"])
-        for ws in formatted:
-            apply_uniform_header_fill(ws, header_fill)
-    if uniform_font and formatted:
-        base = _first_data_font(formatted)
-        if base is not None:
-            for ws in formatted:
-                apply_uniform_data_font(ws, base)
+    if formatted:
+        style_output_sheets(formatted, width_by="header", data_font=first_data_font(formatted))
 
     wb_out.save(out_path)
     return results
-
-
-def _first_data_font(worksheets):
-    """The font of the first data cell found across the given sheets, used as
-    the single font every data cell is normalized to."""
-    for ws in worksheets:
-        for row in ws.iter_rows(min_row=2, max_row=min(ws.max_row, 2),
-                                max_col=ws.max_column):
-            for cell in row:
-                if cell.value is not None:
-                    return copy.copy(cell.font)
-    return None
