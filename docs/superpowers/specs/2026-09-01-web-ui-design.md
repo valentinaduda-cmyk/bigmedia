@@ -124,6 +124,18 @@ No subprocess invocation, no re-parsing of CLI args.
    filesystem immediately after the response is sent (or immediately on
    error).
 
+### Analyze step
+
+Before running, the command form can call `POST /commands/{slug}/analyze`
+with the uploaded files to inspect them read-only: it returns the header
+union, per-sheet row counts, and (for commands with an analyzer, e.g.
+Sort) suggested option values plus annotations like per-category clip
+counts. The wizard uses this to populate the filename-column dropdown,
+pre-tick category checkboxes, and surface warnings without blocking Run.
+See `docs/superpowers/specs/2026-09-10-analyze-suggest-wizard-design.md`
+for the full design, JSON shape, and precedence rules (analysis overrides
+preset values).
+
 ## Error handling
 
 - Each business-function call is wrapped; on exception, the form is
