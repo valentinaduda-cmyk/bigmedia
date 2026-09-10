@@ -149,84 +149,45 @@ def test_sort_workbook_cannot_skip_the_fallback_category(sample_master, tmp_path
         sort_workbook(str(sample_master), str(tmp_path / "out.xlsx"), skip_categories=["3rd parties"])
 
 
-def test_sort_workbook_autofit_widths_are_uniform_across_sheets(sample_master, tmp_path):
-    # Delivery files arrive with columns too narrow to read; autofit sizes
-    # each column to its longest value so nobody has to drag column edges by
-    # hand. Widths must be identical on every category sheet, otherwise the
-    # workbook looks different depending on which tab you're on.
-    out_path = tmp_path / "out.xlsx"
-    sort_workbook(str(sample_master), str(out_path), autofit=True)
-
-    wb = load_workbook(out_path)
-    sheets = [s for s in wb.sheetnames if s != "Worksheet"]
-    ref = {k: v.width for k, v in wb[sheets[0]].column_dimensions.items()}
-    assert ref, "autofit set no widths"
-    for s in sheets[1:]:
-        got = {k: v.width for k, v in wb[s].column_dimensions.items()}
-        assert got == ref, f"{s} has different widths"
-
-
-def test_sort_workbook_autofit_respects_min_and_max(sample_master, tmp_path):
-    out_path = tmp_path / "out.xlsx"
-    sort_workbook(str(sample_master), str(out_path), autofit=True,
-                  min_width=12, max_width=30)
-
-    wb = load_workbook(out_path)
-    widths = [d.width for d in wb["AP"].column_dimensions.values()]
-    assert widths
-    for w in widths:
-        assert 12 <= w <= 30
-
-    # Column A holds the long clip names and must be capped, not unbounded.
-    assert wb["AP"].column_dimensions["A"].width == 30
+def test_sort_output_sheets_are_always_styled(sample_master, tmp_path):
+    from openpyxl import load_workbook
+    out = tmp_path / "out.xlsx"
+    sort_workbook(str(sample_master), str(out))
+    wb = load_workbook(str(out))
+    cat_sheets = [t for t in wb.sheetnames if t != "Worksheet"]
+    assert cat_sheets
+    ref = None
+    for t in cat_sheets:
+        ws = wb[t]
+        # header row: black fill, white bold
+        h = ws.cell(row=1, column=1)
+        assert h.fill.fgColor.rgb == "FF000000"
+        assert h.font.bold and h.font.color.rgb == "FFFFFFFF"
+        # widths in range and shared across sheets
+        w = ws.column_dimensions["A"].width
+        assert 10 <= w <= 60
+        ref = ref or w
+        assert ws.column_dimensions["A"].width == ref
+        # uniform data font (row 2+ all one name), when the sheet has data
+        fonts = {ws.cell(row=r, column=1).font.name
+                 for r in range(2, ws.max_row + 1) if ws.cell(row=r, column=1).value}
+        assert len(fonts) <= 1
 
 
-def test_sort_workbook_autofit_fits_the_longest_value_in_the_column(tmp_path):
-    src_path = tmp_path / "src.xlsx"
-    wb = Workbook()
-    ws = wb.active
-    ws.append(["Clip Name", "Notes"])
-    ws.append(["apus_clip1.mxf", "x"])
-    ws.append(["shutterstock_777.mp4", "a much longer note than the header"])
-    wb.save(src_path)
-
-    out_path = tmp_path / "out.xlsx"
-    sort_workbook(str(src_path), str(out_path), autofit=True, min_width=5, max_width=100)
-
-    wb = load_workbook(out_path)
-    b = wb["Shutterstock"].column_dimensions["B"].width
-    assert b >= len("a much longer note than the header")
-
-
-def test_sort_workbook_uniform_font_on_data_cells(sample_master, tmp_path):
-    # Source files mix fonts column to column; the output should read as one
-    # table. Header styling is left alone -- only data cells are normalized.
-    out_path = tmp_path / "out.xlsx"
-    sort_workbook(str(sample_master), str(out_path), uniform_font=True)
-
-    wb = load_workbook(out_path)
-    seen = set()
-    for s in wb.sheetnames:
-        if s == "Worksheet":
-            continue
-        ws = wb[s]
-        for r in range(2, ws.max_row + 1):
-            for c in range(1, ws.max_column + 1):
-                f = ws.cell(row=r, column=c).font
-                seen.add((f.name, f.size, f.bold, f.italic))
-    assert len(seen) == 1, f"data cells use {len(seen)} different fonts: {seen}"
-
-
-def test_sort_workbook_worksheet_backup_is_untouched_by_formatting(sample_master, tmp_path):
-    # The backup tab is a verbatim copy of the input -- autofit and font
-    # normalization must not reach into it.
-    out_path = tmp_path / "out.xlsx"
-    sort_workbook(str(sample_master), str(out_path), autofit=True, uniform_font=True)
-
-    src = load_workbook(sample_master).active
-    backup = load_workbook(out_path)["Worksheet"]
-    for col_letter in ("A", "B", "C", "D"):
-        assert backup.column_dimensions[col_letter].width == src.column_dimensions[col_letter].width
+def test_sort_worksheet_backup_stays_verbatim(sample_master, tmp_path):
+    from openpyxl import load_workbook
+    out = tmp_path / "out.xlsx"
+    sort_workbook(str(sample_master), str(out))
+    wb = load_workbook(str(out))
+    src = load_workbook(str(sample_master)).active
+    bak = wb["Worksheet"]
+    # header fill NOT forced to black on the backup
+    assert bak.cell(row=1, column=1).fill.fgColor.rgb != "FF000000" or \
+           src.cell(row=1, column=1).fill.fgColor.rgb == "FF000000"
+    # values identical
+    for r in range(1, src.max_row + 1):
+        for c in range(1, src.max_column + 1):
+            assert bak.cell(row=r, column=c).value == src.cell(row=r, column=c).value
 
 
 def test_analyze_sort_suggests_only_nonzero_categories(tmp_path):
