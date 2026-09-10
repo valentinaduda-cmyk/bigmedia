@@ -263,7 +263,11 @@ def analyze_files(paths):
     header names, every sheet's name and (header-excluded) row count summed
     across files, and warnings for files that won't open or whose columns
     disagree with the first readable file. Never raises for a bad file --
-    it lands in "warnings" and the others are still processed."""
+    it lands in "warnings" and the others are still processed.
+
+    Header values are stringified (``str(value).strip()``) so a stray
+    ``datetime``/number cell in row 1 still yields a JSON-serializable
+    header; whitespace-only cells are still dropped."""
     headers = []
     seen_headers = set()
     first_header_set = None
@@ -280,7 +284,7 @@ def analyze_files(paths):
 
             active = wb.active
             file_headers = [
-                c.value for c in next(active.iter_rows(min_row=1, max_row=1), [])
+                str(c.value).strip() for c in next(active.iter_rows(min_row=1, max_row=1), [])
                 if c.value is not None and str(c.value).strip() != ""
             ]
             for h in file_headers:

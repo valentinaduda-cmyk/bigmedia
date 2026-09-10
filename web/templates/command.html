@@ -35,6 +35,10 @@
     {% if f.name == "categories" and spec.slug == "sort" %}
     <fieldset class="categories">
       <legend>{{ f.label }}</legend>
+      {# Marker so the Run route can tell "user cleared every box" (skip all
+         but the 3rd-parties fallback) from "API caller omitted the field"
+         (keep all categories). #}
+      <input type="hidden" name="categories_present" value="1">
       {% set selected = (values or {}).get("categories") %}
       {% for category in all_categories %}
       <label class="category-checkbox">

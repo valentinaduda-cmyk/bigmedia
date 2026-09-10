@@ -78,14 +78,18 @@ def test_analyze_missing_name_column_warns_but_200(monkeypatch):
     assert response.json()["warnings"]
 
 
-def test_analyze_generic_command_has_no_suggestions(monkeypatch):
+def test_analyze_generic_command_has_no_per_command_suggestions(monkeypatch):
     client = _logged_in_client(monkeypatch)
     content = _xlsx_bytes(["x.mov"])
     files = {"files": ("master.xlsx", content, "application/octet-stream")}
     response = client.post("/commands/dedupe/analyze", data={}, files=files)
     body = response.json()
     assert body["headers"] == ["Clip Name"]
-    assert body["suggestions"] == {}
+    # Generic column auto-detect fills name_column; no per-command analyzer
+    # runs, so there are no categories/annotations.
+    assert body["suggestions"] == {"name_column": "Clip Name"}
+    assert "categories" not in body["suggestions"]
+    assert body["annotations"] == {}
 
 
 def test_analyze_unknown_slug_404(monkeypatch):
@@ -122,6 +126,63 @@ def test_analyze_route_500s_to_400_on_internal_error(monkeypatch):
     response = client.post("/commands/sort/analyze", data={"name_column": "Clip Name"}, files=files)
     assert response.status_code == 400
     assert "error" in response.json()
+
+
+def test_analyze_route_404s_pair_mode_slug(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+    files = {"files": ("m.xlsx", _xlsx_bytes(["x.mov"]), "application/octet-stream")}
+    response = client.post("/commands/compare/analyze", data={}, files=files)
+    assert response.status_code == 404
+
+
+def test_analyze_route_datetime_header_is_200_with_string(monkeypatch):
+    import datetime
+    from openpyxl import Workbook
+
+    client = _logged_in_client(monkeypatch)
+    wb = Workbook()
+    ws = wb.active
+    ws.append([datetime.datetime(2026, 9, 10), 42])
+    ws.append(["x.mov", 1])
+    buf = io.BytesIO()
+    wb.save(buf)
+    files = {"files": ("m.xlsx", buf.getvalue(), "application/octet-stream")}
+    response = client.post("/commands/sort/analyze", data={}, files=files)
+    assert response.status_code == 200
+    assert all(isinstance(h, str) for h in response.json()["headers"])
+
+
+def test_sort_run_empty_categories_with_marker_keeps_only_fallback(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+    content = _xlsx_bytes([
+        "BM1234_something.mxf",                  # AP
+        "045_SO_EP18_01_3DExplainer_TXLS.mov",   # GFX
+        "shutterstock_777.mp4",                  # Shutterstock
+    ])
+    files = {"files": ("master.xlsx", content, "application/octet-stream")}
+    response = client.post(
+        "/commands/sort",
+        data={"name_column": "Clip Name", "categories_present": "1"},
+        files=files,
+    )
+    assert response.status_code == 200
+    wb = load_workbook(io.BytesIO(response.content))
+    assert set(wb.sheetnames) == {"Worksheet", "3rd parties"}
+
+
+def test_sort_run_plain_form_no_marker_keeps_all_categories(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+    content = _xlsx_bytes(["BM1234_something.mxf", "shutterstock_777.mp4"])
+    files = {"files": ("master.xlsx", content, "application/octet-stream")}
+    response = client.post(
+        "/commands/sort",
+        data={"name_column": "Clip Name"},
+        files=files,
+    )
+    assert response.status_code == 200
+    wb = load_workbook(io.BytesIO(response.content))
+    assert "AP" in wb.sheetnames
+    assert "Shutterstock" in wb.sheetnames
 
 
 def test_sort_run_accepts_multiple_categories_checkboxes(monkeypatch):

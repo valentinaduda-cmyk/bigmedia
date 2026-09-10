@@ -1,3 +1,5 @@
+import datetime
+
 from openpyxl import Workbook
 
 from bigmedia.xlsx_utils import analyze_files
@@ -57,6 +59,17 @@ def test_unreadable_file_warns_and_others_still_processed(tmp_path):
     result = analyze_files([str(bad), good])
     assert result["headers"] == ["Clip Name"]
     assert any("bad.xlsx" in w and "could not read" in w for w in result["warnings"])
+
+
+def test_non_string_header_cells_are_stringified(tmp_path):
+    a = _make(tmp_path / "a.xlsx", {"S": [
+        [datetime.datetime(2026, 9, 10), 42, "Notes"],
+        ["x", 1, "n"],
+    ]})
+    result = analyze_files([a])
+    assert all(isinstance(h, str) for h in result["headers"])
+    assert "42" in result["headers"]
+    assert any("2026-09-10" in h for h in result["headers"])
 
 
 def test_lazily_parsed_xml_failure_warns_and_others_still_processed(tmp_path):
