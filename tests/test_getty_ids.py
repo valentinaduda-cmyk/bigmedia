@@ -48,6 +48,28 @@ CASES = [
     # followed by a legitimate-looking segment.
     ("GettyImages-650878972_S000_upscale01.mov", "650878972"),
     ("GettyImages-650878972_upscale01.mov", "650878972"),
+    # Newer export/post-process tags: "_SM"/"_SMnn", "_AIUPSCALE",
+    # "_APPLEPRORESHQ" (no separators), "_DFR"/"_DFRnn"/"_DFR_OK", and the
+    # "-640_ADPP" resolution block (optionally followed by a "(N)" copy
+    # marker before the extension). Stripped with or without an extension,
+    # and in combination.
+    ("GettyImages-1234567890_SM.mov", "1234567890"),
+    ("GettyImages-1234567890_SM01.mov", "1234567890"),
+    ("GettyImages-1234567890_SM02", "1234567890"),
+    ("GettyImages-1234567890_AIUPSCALE.mov", "1234567890"),
+    ("GettyImages-1234567890_APPLEPRORESHQ", "1234567890"),
+    ("GettyImages-1234567890_APPLEPRORESHQ.MOV", "1234567890"),
+    ("GettyImages-1234567890_DFR", "1234567890"),
+    ("GettyImages-1234567890_DFR01", "1234567890"),
+    ("GettyImages-1234567890_DFR_OK", "1234567890"),
+    ("GettyImages-1234567890_DFR01_OK", "1234567890"),
+    ("GettyImages-1234567890_DFR02_OK.mov", "1234567890"),
+    ("GETTYIMAGES-2217807802-640_ADPP.MP4", "2217807802"),
+    ("GETTYIMAGES-2217807802-640_ADPP (3).MP4", "2217807802"),
+    ("GETTYIMAGES-2217807802-640_ADPP(4).MP4", "2217807802"),
+    ("GettyImages-1234567890_SM01_APPLEPRORESHQ.MOV", "1234567890"),
+    ("GettyImages-1234567890_DFR01_OK_SM02.MP4", "1234567890"),
+    ("GETTYIMAGES-2217807802-640_ADPP_AIUPSCALE (2).MP4", "2217807802"),
 ]
 
 

@@ -85,6 +85,56 @@ def test_dedup_key_strips_getty_render_prob4_comp_junk():
     assert dedup_key("GettyImages-805-74 2") == "GettyImages-805-74 2"
 
 
+def test_dedup_key_strips_new_post_process_tags():
+    # New export/post-process tags baked onto the same source clip on
+    # re-render -- not different clips. Each is only a trailing "_"-segment
+    # (or the "-640_ADPP" resolution/tool block), stripped before/around the
+    # extension and any " (N)" copy marker.
+    assert dedup_key("GettyImages-1234567890_SM.mov") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_SM01.mov") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_SM02.MP4") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_AIUPSCALE.mov") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_APPLEPRORESHQ") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_APPLEPRORESHQ.MOV") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_DFR") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_DFR01") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_DFR_OK") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_DFR01_OK") == "GettyImages-1234567890"
+    assert dedup_key("GettyImages-1234567890_DFR02_OK.mov") == "GettyImages-1234567890"
+
+
+def test_dedup_key_strips_adpp_block_and_bracketed_number():
+    # "-640_ADPP" is a fixed block; the number in brackets before the
+    # extension is a copy marker and varies (with or without a space).
+    assert dedup_key("GettyImages-2217807802-640_ADPP.MP4") == "GettyImages-2217807802"
+    assert dedup_key("GettyImages-2217807802-640_ADPP (3).MP4") == "GettyImages-2217807802"
+    assert dedup_key("GettyImages-2217807802-640_ADPP(4).MP4") == "GettyImages-2217807802"
+    assert dedup_key("GettyImages-2217807802-640_ADPP (3).MP4") == dedup_key(
+        "GettyImages-2217807802.mov"
+    )
+
+
+def test_dedup_key_strips_combinations_of_tags_in_any_order():
+    base = "GettyImages-1234567890"
+    for name in [
+        "GettyImages-1234567890_SM01_APPLEPRORESHQ.MOV",
+        "GettyImages-1234567890_APPLEPRORESHQ_AIUPSCALE.mov",
+        "GettyImages-1234567890_SM_DFR_OK.mov",
+        "GettyImages-1234567890_DFR01_OK_SM02.MP4",
+        "GettyImages-1234567890-640_ADPP_AIUPSCALE (2).MP4",
+        "GettyImages-1234567890_Apple_ProRes_422_SM01.mov",
+    ]:
+        assert dedup_key(name) == base, name
+
+
+def test_dedup_key_new_tags_do_not_overreach():
+    # A real id segment that merely looks tag-like must survive: "_SM" /
+    # "_DFR" only strip as a trailing segment, and "-640_ADPP" is literal.
+    assert dedup_key("GettyImages-356-30_1234.mov") == "GettyImages-356-30_1234"
+    assert dedup_key("GettyImages-805-74 2") == "GettyImages-805-74 2"
+    assert dedup_key("GettyImages-1B010728_t010.mov") == "GettyImages-1B010728_t010"
+
+
 def test_dedupe_workbook_splits_kept_and_dropped(sample_master, tmp_path):
     out_path = tmp_path / "out.xlsx"
     result = dedupe_workbook(str(sample_master), str(out_path))

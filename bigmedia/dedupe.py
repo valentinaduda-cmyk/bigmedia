@@ -6,19 +6,26 @@ dedup_key() is the original, proven logic (strips extension and trailing
 the same key). It also swallows a trailing " <digits>" annotation right
 after the extension (e.g. a stray frame-rate/version tag), so
 "GettyImages-627-122.mov" and "GettyImages-627-122.mov 25" collapse to the
-same key too. It also strips a trailing known codec/export tag (e.g.
-"_Apple_ProRes_422") right before the extension -- some export tools bake
-the codec into the filename on re-export of the same clip. Same for a
-Getty upscale/segment tag (e.g. "_S000_upscale01" or bare "_upscale01") and
-for a post-process tool tag (e.g. "_AvidRetime-10383301", "_Denoise",
-"_Denoise_chr2", "_Deflicker", "_NTSC").
+same key too. It also strips a trailing known codec/export tag right before the
+extension -- some export tools bake the codec into the filename on
+re-export of the same clip. Both the spaced-out form ("_Apple_ProRes_422")
+and the run-together form ("_APPLEPRORESHQ") match. Same for a Getty
+upscale/segment tag ("_S000_upscale01", bare "_upscale01", "_AIUPSCALE"),
+a post-process tool tag ("_AvidRetime-10383301", "_Denoise", "_Denoise_chr2",
+"_Deflicker", "_NTSC"), a submaster tag ("_SM"/"_SMnn"), a "_DFR"/"_DFRnn"
+tag with an optional "_OK" QC-pass marker, and the fixed "-640_ADPP"
+resolution/tool block.
 
 It also strips Getty QC/review-export junk: "Render" and "Render <N>" take
 markers (space- or underscore-joined), "_prob4" problem-pass tags, and
 "_comp"/"_comp_<N>" composite-render tags -- these pipelines re-append the
 extension on every pass (e.g. "....mov Render 1_prob4.mov" or "....mov
-Render.mov Render_1_prob4.mov"), so this strip loops together with the
-extension strip until nothing more matches, instead of running once.
+Render.mov Render_1_prob4.mov").
+
+Every one of these strippers, plus the extension and the " (1)"-style copy
+marker, runs in a single loop until the name stops shrinking -- so any
+combination of tags collapses regardless of the order they were appended
+in (e.g. "..._SM01_APPLEPRORESHQ.MOV", "...-640_ADPP (3).MP4").
 
 dedupe_workbook() is a first-pass CLI wrapper around it: it groups rows by
 key, keeps the first occurrence, and writes a "Duplicates" sheet listing
@@ -42,20 +49,32 @@ from .xlsx_utils import find_column, find_column_any, capture_header_template, w
 NAME_COLUMN_ALIASES = ("Clip Name", "Name")
 
 # Known codec/export tags some tools bake into the filename right before the
-# extension when re-exporting the same clip (e.g. "..._Apple_ProRes_422.mov").
-# Whitelisted deliberately -- stripping *any* trailing "_word" segment would
-# risk collapsing two genuinely different clips whose ids merely contain an
-# underscore (e.g. "GettyImages-356-30_1234.mov").
+# extension when re-exporting the same clip. Whitelisted deliberately --
+# stripping *any* trailing "_word" segment would risk collapsing two
+# genuinely different clips whose ids merely contain an underscore (e.g.
+# "GettyImages-356-30_1234.mov"). The separators between the Apple / ProRes /
+# quality words are optional so both the spaced-out form ("_Apple_ProRes_422HQ")
+# and the run-together form ("_APPLEPRORESHQ") match.
 _CODEC_SUFFIX_RE = re.compile(
-    r'_(?:Apple_)?(?:ProRes(?:_(?:422|4444)(?:HQ|LT)?|_Proxy)?|DNxHD|DNxHR|H\.?264|H\.?265|HEVC|AVC|XDCAM|MPEG-?[24]?)$',
+    r'_(?:Apple[_ ]?)?'
+    r'(?:ProRes[_ ]?(?:(?:422|4444)(?:[_ ]?(?:HQ|LT))?|Proxy|HQ|LT)?'
+    r'|DNxHD|DNxHR|H\.?264|H\.?265|HEVC|AVC|XDCAM|MPEG-?[24]?)$',
     re.IGNORECASE,
 )
 
 # Getty re-exports/upscales sometimes bake an optional segment marker
-# ("_S000") and an "_upscaleNN" tag onto the same source id, e.g.
-# "GettyImages-650878972_S000_upscale01.mov" -- same clip as
+# ("_S000") and an "_upscaleNN" / "_AIUPSCALE" tag onto the same source id,
+# e.g. "GettyImages-650878972_S000_upscale01.mov" -- same clip as
 # "GettyImages-650878972_upscale01.mov" and "GettyImages-650878972.mov".
-_UPSCALE_SUFFIX_RE = re.compile(r'(?:_S\d+)?_upscale\d*$', re.IGNORECASE)
+_UPSCALE_SUFFIX_RE = re.compile(r'(?:_S\d+)?_(?:AI[_ ]?)?upscale\d*$', re.IGNORECASE)
+
+# Newer export/post-process tags baked onto the same source clip on
+# re-render. Each is only ever a trailing "_"-segment, so anchoring to the
+# end is safe: "_SM"/"_SMnn" (submaster), "_DFR"/"_DFRnn" with an optional
+# "_OK" QC-pass marker, and the fixed "-640_ADPP" resolution/tool block.
+_SUBMASTER_SUFFIX_RE = re.compile(r'_SM\d*$', re.IGNORECASE)
+_DFR_SUFFIX_RE = re.compile(r'_DFR\d*(?:_OK)?$', re.IGNORECASE)
+_ADPP_SUFFIX_RE = re.compile(r'-640_ADPP$', re.IGNORECASE)
 
 # Post-process tools bake their own tag onto the same source id when a clip
 # is re-exported through them -- not a different clip, e.g.
@@ -70,6 +89,9 @@ _POST_PROCESS_SUFFIX_RE = re.compile(
 # Extension + optional trailing " 25"-style tag, same pattern used below.
 _EXT_RE = re.compile(r'\.[A-Za-z0-9]{2,4}(?:\s+\d+)?$')
 
+# " (1)"-style copy marker (with or without a leading space).
+_COPY_MARKER_RE = re.compile(r'\s*\(\d+\)\s*$')
+
 # Getty QC/review-export junk tags -- see module docstring. Each pipeline
 # pass re-appends its own extension, so these are stripped in a loop
 # together with _EXT_RE rather than a single pass.
@@ -77,26 +99,35 @@ _RENDER_SUFFIX_RE = re.compile(r'[ _]Render(?:[ _]\d+)?$', re.IGNORECASE)
 _PROB4_SUFFIX_RE = re.compile(r'_prob4$', re.IGNORECASE)
 _COMP_SUFFIX_RE = re.compile(r'_comp(?:_\d+)?$', re.IGNORECASE)
 
-
-def _strip_getty_review_export_junk(base):
-    while True:
-        new_base = _EXT_RE.sub('', base)
-        new_base = _RENDER_SUFFIX_RE.sub('', new_base)
-        new_base = _PROB4_SUFFIX_RE.sub('', new_base)
-        new_base = _COMP_SUFFIX_RE.sub('', new_base)
-        if new_base == base:
-            return new_base
-        base = new_base
+# Every trailing-noise stripper, applied in a loop until the name stops
+# shrinking. Looping (rather than one pass each) is what lets any
+# combination of tags collapse regardless of the order they were appended
+# in -- e.g. "..._SM01_APPLEPRORESHQ.MOV" or "...-640_ADPP_AIUPSCALE (2).MP4".
+_NOISE_SUFFIX_RES = (
+    _EXT_RE,
+    _COPY_MARKER_RE,
+    _RENDER_SUFFIX_RE,
+    _PROB4_SUFFIX_RE,
+    _COMP_SUFFIX_RE,
+    _CODEC_SUFFIX_RE,
+    _UPSCALE_SUFFIX_RE,
+    _POST_PROCESS_SUFFIX_RE,
+    _SUBMASTER_SUFFIX_RE,
+    _DFR_SUFFIX_RE,
+    _ADPP_SUFFIX_RE,
+)
 
 
 def dedup_key(name: str) -> str:
     base = (name or "").strip()
-    base = _strip_getty_review_export_junk(base)                 # strip extension(s) + Render/prob4/comp junk
-    base = _CODEC_SUFFIX_RE.sub('', base)                        # strip known codec/export tag
-    base = _UPSCALE_SUFFIX_RE.sub('', base)                      # strip known upscale/segment tag
-    base = _POST_PROCESS_SUFFIX_RE.sub('', base)                 # strip known post-process tool tag
-    base = re.sub(r'\s*\(\d+\)\s*$', '', base).strip()          # strip " (1)" copy marker
-    return base
+    while True:
+        new_base = base
+        for suffix_re in _NOISE_SUFFIX_RES:
+            new_base = suffix_re.sub('', new_base)
+        new_base = new_base.strip()
+        if new_base == base:
+            return base
+        base = new_base
 
 
 def dedupe_workbook(src_path, out_path, name_column="Clip Name"):

@@ -22,9 +22,11 @@ Every other sheet (Worksheet, GFX, Getty Unknown, Artlist, Camera Footage,
 3rd parties, ...) is copied through unchanged.
 
 Two clips are "the same clip" if dedupe.dedup_key() collapses them to the
-same key (extension + trailing " (1)"-style copy marker stripped) — e.g.
-"GettyImages-871860158.mov" and "GettyImages-871860158 (1).mov" are the same
-clip, but "GettyImages-356-30.mov" and "GettyImages-356-31.mov" are not.
+same key (extension, " (1)"-style copy marker and known codec/export/
+post-process tags stripped) — e.g. "GettyImages-871860158.mov",
+"GettyImages-871860158 (1).mov" and "GettyImages-871860158_APPLEPRORESHQ.mov"
+are the same clip, but "GettyImages-356-30.mov" and "GettyImages-356-31.mov"
+are not.
 
 Reuters is a deliberate exception: its rushes/compilation exports repeat a
 tape id ("m<digits>", e.g. "..._m909021_0-20-15-0-29-40.mov") across many

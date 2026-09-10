@@ -46,6 +46,13 @@ from .xlsx_utils import find_column, iter_xlsx_files
 _GETTY_PREFIX_RE = re.compile(r'^GettyImages-', re.I)
 _EXT_RE = re.compile(r'\.(mov|mp4|jpg|new)\b', re.I)
 _KOPIE_SUFFIX_RE = re.compile(r'\s*\(kopie\)\s*$', re.I)
+# "(N)" copy marker (with or without a leading space), before or in place
+# of the extension -- e.g. "...-640_ADPP (3).MP4".
+_COPY_MARKER_RE = re.compile(r'\s*\(\d+\)\s*$')
+# The fixed "-640_ADPP" resolution/tool block, plus an optional "(N)" copy
+# marker glued to it -- hyphen-joined to the id, so it can't be caught by
+# the "_"-separated junk-part walk below.
+_ADPP_SUFFIX_RE = re.compile(r'-640_ADPP(?:\s*\(\d+\))?', re.IGNORECASE)
 
 # Known junk tags export/post-process tools bake onto the id as a trailing
 # "_word" chain -- explicitly whitelisted (mirrors dedupe.py's codec/
@@ -53,8 +60,9 @@ _KOPIE_SUFFIX_RE = re.compile(r'\s*\(kopie\)\s*$', re.I)
 # junk", because real ids also end in non-numeric-looking segments that are
 # NOT junk (e.g. "1B010728_t010" -- "t010" is part of the id, not a tag).
 _JUNK_PART_RE = re.compile(
-    r'^(?:Apple|ProRes|422|444|4444|HQ|LT|Proxy|DNxHD|DNxHR|H\.?264|H\.?265|HEVC|AVC|'
-    r'XDCAM|MPEG-?[24]?|Denoise|Deflicker|NTSC|AvidRetime(?:-\d+)?|S\d+|upscale\d*)$',
+    r'^(?:Apple|ProRes|APPLEPRORES(?:HQ|LT)?|422|444|4444|HQ|LT|Proxy|DNxHD|DNxHR|'
+    r'H\.?264|H\.?265|HEVC|AVC|XDCAM|MPEG-?[24]?|Denoise|Deflicker|NTSC|'
+    r'AvidRetime(?:-\d+)?|S\d+|upscale\d*|AIUPSCALE\d*|SM\d*|DFR\d*)$',
     re.IGNORECASE,
 )
 
@@ -64,35 +72,42 @@ def extract_getty_id(name: str) -> str:
     Pull the Getty id out of a clip filename. Rules, derived from real
     examples (see tests/test_getty_ids.py for the full regression list):
       - strip a leading "GettyImages-"/"GETTYIMAGES-" prefix
+      - strip the fixed "-640_ADPP" block (and a "(N)" copy marker glued to
+        it) wherever it appears, e.g. "...-640_ADPP (3).MP4" -> "..."
       - a leading "mr_"/"MR_" tag right after that prefix is part of the id,
         not metadata — keep it as-is, e.g. "mr_00108323.mov" -> "mr_00108323"
       - if a .mov/.mp4/.jpg/.new extension appears anywhere, cut the string
         at the start of that extension, dropping it and everything after it
         (including trailing " 25"-style suffixes, or a re-render marker
-        like ".new.02"). Within what's left, walk the "_"-separated parts
-        after the first and drop a part plus everything after it the moment
-        one matches a known junk tag (_JUNK_PART_RE, e.g. "_Apple_ProRes_422",
-        "_Denoise_02", "_S000_upscale01"). Purely numeric parts (e.g.
-        "_0003") and any other non-junk part (e.g. "_t010") are kept as
-        part of the id.
-      - if no extension is present, keep the remainder as-is (including any
-        trailing " 2"-style suffix), except a bare trailing hyphen with
-        nothing after it (e.g. "96410456-" -> "96410456").
+        like ".new.02"); then drop a trailing " (N)" copy marker.
+      - walk the "_"-separated parts after the first and drop a part plus
+        everything after it the moment one matches a known junk tag
+        (_JUNK_PART_RE, e.g. "_Apple_ProRes_422", "_APPLEPRORESHQ",
+        "_Denoise_02", "_S000_upscale01", "_AIUPSCALE", "_SM01",
+        "_DFR01_OK"). Purely numeric parts (e.g. "_0003") and any other
+        non-junk part (e.g. "_t010") are kept as part of the id.
+      - if no extension is present, also drop a bare trailing hyphen with
+        nothing after it (e.g. "96410456-" -> "96410456"); a trailing
+        " 2"-style suffix is kept.
     """
     s = (name or "").strip()
     s = _GETTY_PREFIX_RE.sub('', s)
+    s = _ADPP_SUFFIX_RE.sub('', s)
 
     m = _EXT_RE.search(s)
     if m:
         s = s[:m.start()]
-        parts = s.split('_')
-        core = [parts[0]]
-        for part in parts[1:]:
-            if _JUNK_PART_RE.match(part):
-                break
-            core.append(part)
-        s = '_'.join(core)
-    else:
+    s = _COPY_MARKER_RE.sub('', s)
+
+    parts = s.split('_')
+    core = [parts[0]]
+    for part in parts[1:]:
+        if _JUNK_PART_RE.match(part):
+            break
+        core.append(part)
+    s = '_'.join(core)
+
+    if not m:
         s = re.sub(r'-$', '', s)
     return s
 
