@@ -268,17 +268,15 @@ def style_output_sheets(sheets, *, width_by, data_font):
     if not targets:
         return
     if width_by == "index":
+        # Feed every row -- header row included -- of every target sheet as a
+        # plain row. Header text and data are then positionally self-aligned
+        # within each sheet, and the cross-sheet max is still taken. (Using
+        # the `headers=` param with a flat concat of all sheets' headers would
+        # misalign column indices when sibling sheets differ in column count.)
         widths = measure_column_widths(
-            (
-                [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
-                for ws in targets
-                for r in range(2, ws.max_row + 1)
-            ),
-            headers=[
-                ws.cell(row=1, column=c).value
-                for ws in targets
-                for c in range(1, ws.max_column + 1)
-            ],
+            [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
+            for ws in targets
+            for r in range(1, ws.max_row + 1)
         )
         for ws in targets:
             apply_column_widths(ws, widths)

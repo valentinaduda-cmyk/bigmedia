@@ -169,11 +169,20 @@ def test_style_output_sheets_index_keyed_clamped_and_uniform():
 def test_style_output_sheets_header_keyed_matches_by_name():
     wb = Workbook()
     wb.remove(wb.active)
-    # same header at different column indices
-    s1 = _sheet(wb, "S1", [["Clip Name", "Dur"], ["aaaa", 1]])
-    s2 = _sheet(wb, "S2", [["Dur", "Clip Name"], [1, "aaaa"]])
+    # "Clip Name Column" (>10 chars, so it doesn't clamp to the min) sits at
+    # column A on s1 and column B on s2. Header-keyed widths follow the name;
+    # index-keyed widths would instead make column A wide on BOTH sheets.
+    s1 = _sheet(wb, "S1", [["Clip Name Column", "D"], ["x", "y"]])
+    s2 = _sheet(wb, "S2", [["D", "Clip Name Column"], ["y", "x"]])
     style_output_sheets([s1, s2], width_by="header", data_font=Font(name="Calibri", size=11))
-    assert s1.column_dimensions["A"].width == s2.column_dimensions["B"].width  # "Clip Name" both
+    wide = len("Clip Name Column") + 2
+    assert s1.column_dimensions["A"].width == wide
+    assert s2.column_dimensions["B"].width == wide
+    assert s1.column_dimensions["A"].width == s2.column_dimensions["B"].width  # keyed by name
+    # the narrow "D" column stays at the min on both, and crucially column A of
+    # s2 is NOT wide (which is what index-keying would have produced)
+    assert s2.column_dimensions["A"].width == AUTOFIT_MIN_WIDTH
+    assert s1.column_dimensions["B"].width == AUTOFIT_MIN_WIDTH
 
 
 def test_style_output_sheets_skips_worksheet_tab():
