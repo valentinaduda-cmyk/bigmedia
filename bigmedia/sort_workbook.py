@@ -90,12 +90,14 @@ def count_categories(paths, name_column="Clip Name"):
     counts = {category: 0 for category in CATEGORY_ORDER}
     for path in paths:
         wb_src = load_workbook(path, read_only=True, data_only=True)
-        ws_src = wb_src.active
-        name_candidates = [name_column] + [a for a in NAME_COLUMN_ALIASES if a != name_column]
-        name_col_idx = find_column_any(ws_src, name_candidates)
-        for row in ws_src.iter_rows(min_row=2, min_col=name_col_idx, max_col=name_col_idx):
-            counts[classify(row[0].value)] += 1
-        wb_src.close()
+        try:
+            ws_src = wb_src.active
+            name_candidates = [name_column] + [a for a in NAME_COLUMN_ALIASES if a != name_column]
+            name_col_idx = find_column_any(ws_src, name_candidates)
+            for row in ws_src.iter_rows(min_row=2, min_col=name_col_idx, max_col=name_col_idx):
+                counts[classify(row[0].value)] += 1
+        finally:
+            wb_src.close()
     return counts
 
 

@@ -13,8 +13,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from bigmedia.group_duplicates import group_duplicates_workbook
-from bigmedia.sort_workbook import count_categories
 
+from web.analyze import run_analysis
 from web.auth import RedirectToLogin, check_password, require_login
 from web.commands import COMMANDS, SORT_CATEGORIES
 from web.files import parse_field, reject_non_xlsx, zip_files
@@ -155,24 +155,21 @@ def _save_uploads(files: List[UploadFile], dest_dir: Path) -> list:
     return saved
 
 
-@app.post("/commands/sort/analyze", dependencies=[Depends(require_login)])
-async def sort_analyze(request: Request, files: List[UploadFile] = File(...)):
+@app.post("/commands/{slug}/analyze", dependencies=[Depends(require_login)])
+async def command_analyze(request: Request, slug: str, files: List[UploadFile] = File(...)):
+    spec = _command_or_404(slug)
     bad = reject_non_xlsx([f.filename for f in files])
     if bad:
         return JSONResponse({"error": f"Not an .xlsx file: {', '.join(bad)}"}, status_code=400)
-
     form = await request.form()
-    name_column = form.get("name_column") or "Clip Name"
-
     with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
-        inputs = _save_uploads(files, tmp_dir)
+        paths = _save_uploads(files, Path(tmp))
         try:
-            counts = count_categories([str(p) for p in inputs], name_column=name_column)
+            data = run_analysis(spec, [str(p) for p in paths], form)
         except Exception as exc:
+            logger.exception("analyze failed for %s", slug)
             return JSONResponse({"error": str(exc)}, status_code=400)
-
-    return JSONResponse({"counts": counts})
+    return JSONResponse(data)
 
 
 @app.post("/commands/{slug}", dependencies=[Depends(require_login)])
