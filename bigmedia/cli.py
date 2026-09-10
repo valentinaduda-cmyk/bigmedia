@@ -76,7 +76,6 @@ from .fu_grid import fu_grid_workbook
 from .compare_versions import compare_workbooks
 from .getty_split import fix_getty_split, pair_by_episode
 from .xlsx_utils import iter_xlsx_files as _iter_xlsx_inputs
-from .xlsx_utils import AUTOFIT_MIN_WIDTH, AUTOFIT_MAX_WIDTH
 
 
 def _default_output(input_path, suffix: str) -> str:
@@ -116,9 +115,7 @@ def cmd_sort(args):
 
     def process_one(input_path, out_path):
         counts = sort_workbook(str(input_path), out_path, name_column=args.name_column,
-                               categories=categories, skip_categories=skip_categories,
-                               autofit=args.autofit, min_width=args.min_width,
-                               max_width=args.max_width, uniform_font=args.uniform_font)
+                               categories=categories, skip_categories=skip_categories)
         print(f"Wrote {out_path}")
         for cat, n in counts.items():
             print(f"  {cat}: {n}")
@@ -140,10 +137,7 @@ def cmd_group(args):
     sheets = [s.strip() for s in args.sheets.split(",")] if args.sheets else None
 
     def process_one(input_path, out_path):
-        result = group_duplicates_workbook(str(input_path), out_path, sheets=sheets, name_column=args.name_column, duration_column=args.duration_column, fps=args.fps,
-                                           autofit=args.autofit, min_width=args.min_width,
-                                           max_width=args.max_width, uniform_font=args.uniform_font,
-                                           uniform_header=args.uniform_header)
+        result = group_duplicates_workbook(str(input_path), out_path, sheets=sheets, name_column=args.name_column, duration_column=args.duration_column, fps=args.fps)
         print(f"Wrote {out_path}")
         for sheet, counts in result.items():
             print(f"  {sheet}: {counts['total_clips']} clips, {counts['total_unique_clips']} unique, "
@@ -315,13 +309,6 @@ def build_parser():
     p_fix.add_argument("--duration-column", default="Clip Duration", help='Duration header used when re-grouping (default: "Clip Duration")')
     p_fix.add_argument("--fps", type=int, default=25, help="Frame rate used when re-grouping (default: 25)")
     p_fix.set_defaults(func=cmd_fix_getty)
-
-    for _p in (p_sort, p_group):
-        _p.add_argument("--autofit", action="store_true", help="Size every column to its longest value so the output is readable without dragging column edges by hand. Widths are shared across sheets, so a header is the same width whichever tab you open")
-        _p.add_argument("--min-width", type=float, default=AUTOFIT_MIN_WIDTH, help=f"Narrowest an autofitted column may be, in characters (default: {AUTOFIT_MIN_WIDTH})")
-        _p.add_argument("--max-width", type=float, default=AUTOFIT_MAX_WIDTH, help=f"Widest an autofitted column may be, in characters (default: {AUTOFIT_MAX_WIDTH}) -- without a cap one long clip name makes the sheet unusable sideways")
-        _p.add_argument("--uniform-font", action="store_true", help="Give every data cell the same font, so a workbook whose source mixed fonts column to column reads as one table. Header styling is left alone")
-    p_group.add_argument("--uniform-header", action="store_true", help="Give every header cell the same fill colour. Delivery headers are white bold text with a fill on only some columns, which renders the rest as invisible white-on-white; the file's own most-used header colour is reused, falling back to black")
 
     p_getty = subparsers.add_parser("getty-ids", help="Extract Getty clip ids from several sorted workbooks into a Customer Declaration Form report")
     p_getty.add_argument("input", help="Path to a folder of sorted .xlsx files (or a single file)")
