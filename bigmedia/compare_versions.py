@@ -47,7 +47,10 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 from .dedupe import dedup_key
-from .xlsx_utils import find_column_any, capture_header_template, write_data_row
+from .xlsx_utils import (
+    find_column_any, capture_header_template, write_data_row,
+    style_output_sheets, apply_header_style, sample_data_font,
+)
 
 # Same header aliases the other commands accept -- real files use either.
 NAME_COLUMN_ALIASES = ("Clip Name", "Name")
@@ -283,5 +286,14 @@ def compare_workbooks(old_path, new_path, out_path, name_column="Clip Name",
     _write_summary(wb_out, report)
     for title, ws_src, rows in sheets_to_write:
         _write_rows_sheet(wb_out, title, ws_src, rows)
+
+    apply_header_style(wb_out["Summary"])
+    row_sheets = [wb_out[t] for t in wb_out.sheetnames if t != "Summary"]
+    if row_sheets and sheets_to_write:
+        style_output_sheets(
+            row_sheets,
+            width_by="header",
+            data_font=sample_data_font(sheets_to_write[0][1], 1),
+        )
     wb_out.save(out_path)
     return report

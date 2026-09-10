@@ -158,6 +158,26 @@ def test_case_sensitive_treats_recased_names_as_diffs(old_version, new_version, 
     assert "GETTYIMAGES-111" in report["Getty Videos"]["removed"]
 
 
+def test_compare_output_styling_is_black_white(old_version, new_version, tmp_path):
+    out = tmp_path / "styled.xlsx"
+    compare_workbooks(str(old_version), str(new_version), str(out))
+    wb = load_workbook(out)
+
+    for t in wb.sheetnames:
+        ws = wb[t]
+        h = ws.cell(row=1, column=1)
+        assert h.fill.fgColor.rgb == "FF000000", t
+        assert h.font.bold and h.font.color.rgb == "FFFFFFFF", t
+
+    row_sheets = [t for t in wb.sheetnames
+                  if t.endswith("added") or t.endswith("removed")]
+    assert row_sheets
+    assert 10 <= wb[row_sheets[0]].column_dimensions["A"].width <= 60
+
+    # Summary keeps its fixed first-column width (not passed to style_output_sheets).
+    assert wb["Summary"].column_dimensions["A"].width == 24
+
+
 def test_grouped_totals_block_is_not_counted_as_a_clip(old_version, tmp_path):
     new = _write(tmp_path / "grouped.xlsx", [("AP", ["AP-OLD-1", "GONE-CLIP"])])
     wb = load_workbook(new)
