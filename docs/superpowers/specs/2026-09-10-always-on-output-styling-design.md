@@ -42,15 +42,23 @@ Applies to **5 commands**: `sort`, `dedupe`, `group`, `compare`,
   template (Lato, purple titles, fixed 20/10 column widths) so it can be
   sent to Getty unedited.
 
+**Styled:** every **generated** sheet, plus pass-through **clip-list**
+sheets a command copies through unchanged (e.g. `group`'s GFX / Getty
+Unknown / 3rd parties tabs), so a delivered file reads consistently
+throughout.
+
 **Never styled — stays a verbatim copy of the input:**
-- The `"Worksheet"` backup tab, and any other pass-through/backup sheet a
-  command copies through unchanged (`copy_sheet_verbatim`).
+- The `"Worksheet"` backup tab and any raw backup/dump tab ("... Master
+  XML", "Kopie listu ...", "copy of ..."), matched by
+  `xlsx_utils.is_backup_sheet`. These stay byte-identical to the input —
+  no width, font, or header change.
 
 ## Decisions (from brainstorming)
 
 - Every command in scope: the 5 above. fu-grid and getty-ids untouched.
-- `"Worksheet"` / backup tabs stay byte-identical to the input — no width,
-  font, or header change.
+- `"Worksheet"` / backup / raw dump tabs ("Master XML", "Kopie listu",
+  "copy of ...") stay byte-identical to the input — no width, font, or
+  header change. Pass-through clip-list sheets ARE styled.
 - Data font: sampled from the source body (clip-name column, row 2), not a
   fixed family.
 - Header font: force white + bold, keep the source header's family/size;

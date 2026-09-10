@@ -42,12 +42,15 @@ each one encodes a real delivery someone manually confirmed.
   module with no I/O in it. openpyxl plumbing lives in `xlsx_utils.py` and
   is shared across commands — don't reimplement "copy this sheet's
   styling" inline again.
-- Output styling is standardized and always applied to generated sheets:
-  column widths fit the wider of content or header (clamped 10-60), every
-  data cell shares one font sampled from the source, and header rows are a
-  solid black fill with white bold text. The "Worksheet" backup tab is
-  exempt — it gets no output styling. `fu-grid` and
-  `getty-ids` keep their own bespoke layouts.
+- Output styling is standardized and always applied to generated sheets
+  AND to pass-through clip-list sheets (e.g. `group`'s GFX / Getty Unknown
+  / 3rd parties tabs): column widths fit the wider of content or header
+  (clamped 10-60), every data cell shares one font sampled from the
+  source, and header rows are a solid black fill with white bold text. The
+  "Worksheet" backup and any raw backup/dump tab ("Master XML", "Kopie
+  listu", "copy of ...") are exempt — matched by
+  `xlsx_utils.is_backup_sheet`, they stay a verbatim copy of the input.
+  `fu-grid` and `getty-ids` keep their own bespoke layouts.
 - Every workbook-producing command writes a `"Worksheet"` sheet first: a
   copy of the input, as a backup. Preserve this pattern in new commands
   unless explicitly told otherwise.
