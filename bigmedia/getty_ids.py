@@ -38,7 +38,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from .xlsx_utils import find_column, iter_xlsx_files
+from .xlsx_utils import find_column, iter_xlsx_files, match_sheet_name
 
 _GETTY_PREFIX_RE = re.compile(r'^GettyImages-', re.I)
 _EXT_RE = re.compile(r'\.(mov|mp4|jpg|new)\b', re.I)
@@ -144,10 +144,7 @@ def _find_sheet(wb, sheet_name):
     """Sheet titles vary in case across real delivery/sort output (e.g.
     "Getty Videos" vs "Getty videos") — match case-insensitively, same
     convention as group_duplicates.py."""
-    for title in wb.sheetnames:
-        if title.strip().lower() == sheet_name.strip().lower():
-            return title
-    return None
+    return match_sheet_name(wb.sheetnames, sheet_name)
 
 
 # Real delivery files sometimes use an entirely different word for the
@@ -159,12 +156,7 @@ _STILLS_SHEET_ALIASES = ("Getty Stills", "Getty pics")
 
 
 def _find_sheet_any(wb, sheet_name, aliases=()):
-    candidates = [sheet_name] + [a for a in aliases if a.strip().lower() != sheet_name.strip().lower()]
-    for candidate in candidates:
-        title = _find_sheet(wb, candidate)
-        if title:
-            return title
-    return None
+    return match_sheet_name(wb.sheetnames, sheet_name, aliases=aliases)
 
 
 def _read_getty_ids(path, sheet_name, name_column, seconds_column, min_seconds, max_seconds=None,
