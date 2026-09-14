@@ -105,6 +105,15 @@ def test_group_sheets_field_is_a_checklist_scoping_name_and_duration():
     assert fields["duration_column"].sheet_source == ["sheets"]
 
 
+def test_group_sheets_field_allows_missing_sheet():
+    # One episode simply not having a category sheet another episode has is
+    # a legitimate state, not a warning-worthy one (final whole-branch
+    # review Minor #5) -- same principle already applied to getty-ids'
+    # stills sheet.
+    fields = {f.name: f for f in COMMANDS["group"].fields}
+    assert fields["sheets"].allow_missing_sheet is True
+
+
 def test_sort_and_dedupe_fields_declare_no_sheet_source():
     # Explicitly unchanged: no sheet_source anywhere for the two commands
     # this feature does not touch.
@@ -119,7 +128,31 @@ def test_group_page_renders_sheet_checklist_fieldset(monkeypatch):
     assert response.status_code == 200
     body = response.text
     assert 'data-checklist-name="sheets"' in body
+    # A fresh page load (no preset) has no server-rendered checkboxes, so the
+    # "_present" marker must NOT be in the DOM -- its presence used to mean
+    # "the user's checklist selection is authoritative" even before the user
+    # had ever seen a real checkbox (see final whole-branch review finding #1).
+    assert 'name="sheets_present"' not in body
+
+
+def test_group_page_with_preset_prefills_checked_sheet_checkboxes(monkeypatch, tmp_path):
+    from web.main import DB_PATH
+    from web.presets import init_db
+
+    db_path = tmp_path / "presets.db"
+    monkeypatch.setattr("web.main.DB_PATH", db_path)
+    init_db(db_path)
+    client = _logged_in_client(monkeypatch)
+    client.post(
+        "/presets/group",
+        data={"preset_name": "Episode defaults", "sheets": ["AP", "Reuters"]},
+    )
+    response = client.get("/commands/group?preset=Episode defaults")
+    assert response.status_code == 200
+    body = response.text
     assert 'name="sheets_present"' in body
+    assert 'name="sheets" value="AP" checked' in body
+    assert 'name="sheets" value="Reuters" checked' in body
 
 
 def test_getty_ids_page_renders_sheet_name_dropdowns(monkeypatch):

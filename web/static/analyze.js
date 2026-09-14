@@ -84,6 +84,17 @@
       return acc;
     }, {});
 
+    if (!fieldset.querySelector('input[type=hidden][name="' + name + '_present"]')) {
+      var marker = document.createElement('input');
+      marker.type = 'hidden';
+      marker.name = name + '_present';
+      marker.value = '1';
+      fieldset.appendChild(marker);
+    }
+
+    var hint = fieldset.querySelector(".hint");
+    if (hint) hint.hidden = true;
+
     fieldset.querySelectorAll("label.sheet-checkbox").forEach(function (el) { el.remove(); });
     options.forEach(function (opt) {
       var label = document.createElement("label");

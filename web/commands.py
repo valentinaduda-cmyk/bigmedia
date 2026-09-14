@@ -66,7 +66,7 @@ COMMANDS = {
             FieldSpec("duration_column", "Duration column", "text", "Clip Duration",
                       options_source="headers", sheet_source=["sheets"]),
             _FPS,
-            FieldSpec("sheets", "Sheets to group", "sheet_checklist", options_source="sheets"),
+            FieldSpec("sheets", "Sheets to group", "sheet_checklist", options_source="sheets", allow_missing_sheet=True),
         ],
     ),
     "fu-grid": CommandSpec(

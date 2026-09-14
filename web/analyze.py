@@ -50,7 +50,18 @@ def _sheet_source_result(spec, form, generic):
     for hf in headers_fields:
         for source_name in hf.sheet_source:
             source_field = fields_by_name[source_name]
-            for target in _resolve_sheet_field_values(form, source_field):
+            targets = _resolve_sheet_field_values(form, source_field)
+            if not targets and source_field.type == "sheet_checklist" and not form.get(f"{source_field.name}_present"):
+                # Checklist hasn't been populated by the client yet (this is
+                # the first analyze response before any rebuild) -- resolve
+                # against its own suggested sheets instead of resolving
+                # nothing, so headers/suggestions aren't empty on the very
+                # first response. Once the client has populated the
+                # checklist at least once, its "_present" marker is always
+                # sent from then on, and an explicitly empty selection is
+                # honored as a real "user unchecked everything."
+                targets = _suggest_sheet_value(source_field, generic, form) or []
+            for target in targets:
                 if target in resolved:
                     continue
                 aliases = SHEET_ALIASES.get(target.strip().lower(), ())
@@ -81,7 +92,7 @@ def _sheet_source_result(spec, form, generic):
     return {"headers": headers, "warnings": warnings}
 
 
-def _suggest_sheet_value(field, generic):
+def _suggest_sheet_value(field, generic, form):
     """Suggested value(s) for an options_source="sheets" field: a single
     matched real sheet name for a plain dropdown, or a list of matches for
     a "sheet_checklist". Returns None when there's nothing to suggest (the
@@ -96,6 +107,12 @@ def _suggest_sheet_value(field, generic):
             if matched and matched not in matches:
                 matches.append(matched)
         return matches or None
+
+    current = _form_value(form, field)
+    if isinstance(current, list):
+        current = current[0] if current else None
+    if current in real_sheet_names or (current == "" and field.allow_missing_sheet):
+        return None  # already a valid or deliberate selection -- don't override it
 
     target = field.default or ""
     if not target:
@@ -164,7 +181,7 @@ def run_analysis(spec, paths, form):
     # spec.analyze hook.
     for field in spec.fields:
         if field.options_source == "sheets":
-            suggestion = _suggest_sheet_value(field, generic)
+            suggestion = _suggest_sheet_value(field, generic, form)
             if suggestion is not None:
                 result["suggestions"].setdefault(field.name, suggestion)
 

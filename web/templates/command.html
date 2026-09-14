@@ -51,8 +51,17 @@
     {% elif f.type == "sheet_checklist" %}
     <fieldset class="sheet-checklist" data-analyze data-source="sheets" data-checklist-name="{{ f.name }}">
       <legend>{{ f.label }}</legend>
+      {% set selected = (values or {}).get(f.name) %}
+      {% if selected %}
       <input type="hidden" name="{{ f.name }}_present" value="1">
+      {% for sheet in selected %}
+      <label class="sheet-checkbox">
+        <input type="checkbox" name="{{ f.name }}" value="{{ sheet }}" checked> {{ sheet }}
+      </label>
+      {% endfor %}
+      {% else %}
       <p class="hint">Upload a file to see its sheets.</p>
+      {% endif %}
     </fieldset>
     {% elif f.options_source %}
     <label>

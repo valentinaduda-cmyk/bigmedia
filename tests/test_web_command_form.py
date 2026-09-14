@@ -46,4 +46,8 @@ def test_group_sheets_field_is_sheet_checklist_fieldset(monkeypatch):
     # group's "sheets" field is now a sheet_checklist fieldset (JS-populated, not select)
     html = _client(monkeypatch).get("/commands/group").text
     assert 'data-checklist-name="sheets"' in html
-    assert 'name="sheets_present"' in html
+    # A fresh page load (no preset) has no real checkboxes yet, so the
+    # "_present" marker -- which command_submit reads as "the user's
+    # checklist selection is authoritative" -- must not be rendered
+    # unconditionally (final whole-branch review finding #1).
+    assert 'name="sheets_present"' not in html

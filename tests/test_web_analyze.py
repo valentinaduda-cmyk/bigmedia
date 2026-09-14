@@ -196,6 +196,60 @@ def test_group_sheets_checklist_matches_stills_alias(tmp_path):
     assert result["suggestions"]["sheets"] == ["Getty pics"]
 
 
+def test_group_headers_populate_on_first_empty_analyze_call(tmp_path):
+    # A genuinely empty form (no "sheets" key, no "sheets_present" marker)
+    # simulates the very first analyze POST after a file is picked, before
+    # the client has ever rebuilt the checklist. Headers must not come back
+    # empty -- fall back to the checklist field's own suggested sheets.
+    path = _multi_sheet(tmp_path / "ep1.xlsx", {
+        "AP": [["Clip Name"]],
+        "Getty Videos": [["Clip Name", "Clip Duration"]],
+        "COST": [["EP1"]],
+    })
+    result = run_analysis(COMMANDS["group"], [path], {})
+    assert set(result["headers"]) == {"Clip Name", "Clip Duration"}
+
+
+def test_group_headers_empty_once_user_has_unchecked_everything(tmp_path):
+    # Once the client has populated the checklist at least once (marker
+    # present), an explicitly empty "sheets" selection is honored as a real
+    # "user unchecked everything" -- the C1 fallback must NOT re-trigger.
+    path = _multi_sheet(tmp_path / "ep1.xlsx", {
+        "AP": [["Clip Name"]],
+        "Getty Videos": [["Clip Name", "Clip Duration"]],
+    })
+    result = run_analysis(COMMANDS["group"], [path], {"sheets_present": "1"})
+    assert result["headers"] == []
+
+
+def test_fu_grid_does_not_revert_valid_current_sheet_selection(tmp_path):
+    # Old behavior: _suggest_sheet_value suggested purely from field.default
+    # ("3rd parties"), ignoring the user's current, already-valid pick, so
+    # rebuildSelect's preference for `suggested` over `prev` reverted the
+    # user's choice within one round trip.
+    path = _multi_sheet(tmp_path / "ep1.xlsx", {
+        "3rd parties": [["Clip Name"]],
+        "AP": [["Clip Name"]],
+    })
+    result = run_analysis(COMMANDS["fu-grid"], [path], {"sheet": "AP"})
+    assert "sheet" not in result["suggestions"]
+
+
+def test_getty_ids_does_not_revert_deliberate_none_stills_choice(tmp_path):
+    # Old behavior: an explicit "(none)" stills selection got silently
+    # reverted back to "Getty Stills" whenever that sheet happened to exist
+    # in the file, because the suggestion ignored the current form value.
+    path = _multi_sheet(tmp_path / "ep1.xlsx", {
+        "Getty Videos": [["Clip Name"]],
+        "Getty Stills": [["Clip Name"]],
+    })
+    result = run_analysis(
+        COMMANDS["getty-ids"], [path],
+        {"sheet_name": "Getty Videos", "stills_sheet_name": ""},
+    )
+    assert "stills_sheet_name" not in result["suggestions"]
+
+
 def test_sort_dedupe_headers_still_active_sheet_based(tmp_path):
     # No sheet_source anywhere for these two -> untouched code path.
     path = _multi_sheet(tmp_path / "ep1.xlsx", {
