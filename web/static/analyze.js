@@ -40,8 +40,10 @@
   // selection or honoring a server suggestion. When neither is possible the
   // value is silently substituted to options[0]; push a note into `subs` so
   // apply() can surface it in the warning banner (spec decision 6: warn,
-  // fall back, keep Run enabled).
-  function rebuildSelect(sel, options, suggested, subs) {
+  // fall back, keep Run enabled). `labels`, when given, maps an option
+  // value to its display text (used for the "(none)" blank option on an
+  // optional sheet field -- the value stays "" but shouldn't read blank).
+  function rebuildSelect(sel, options, suggested, subs, labels) {
     var prev = sel.value;
     var want;
     if (options.indexOf(suggested) !== -1) {
@@ -58,9 +60,42 @@
     options.forEach(function (opt) {
       var o = document.createElement("option");
       o.value = opt;
-      o.textContent = opt;
+      o.textContent = (labels && labels[opt] !== undefined) ? labels[opt] : opt;
       if (opt === want) o.selected = true;
       sel.appendChild(o);
+    });
+  }
+
+  // Rebuild a dynamic checkbox list (group's "sheets to group" field) from
+  // `options` (real sheet names). Preserves any currently-checked box whose
+  // value is still in `options`; otherwise checks exactly the boxes named
+  // in `suggested`. There is no analog of rebuildSelect's "fall back to
+  // options[0]" here -- an empty checklist (nothing suggested, nothing
+  // previously checked) is a valid state, unlike a required single-select.
+  function rebuildChecklist(fieldset, options, suggested, name) {
+    var hadAny = false;
+    var prevChecked = {};
+    fieldset.querySelectorAll('input[type=checkbox]').forEach(function (box) {
+      hadAny = true;
+      if (box.checked) prevChecked[box.value] = true;
+    });
+    var wantChecked = hadAny ? prevChecked : (suggested || []).reduce(function (acc, opt) {
+      acc[opt] = true;
+      return acc;
+    }, {});
+
+    fieldset.querySelectorAll("label.sheet-checkbox").forEach(function (el) { el.remove(); });
+    options.forEach(function (opt) {
+      var label = document.createElement("label");
+      label.className = "sheet-checkbox";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.name = name;
+      box.value = opt;
+      box.checked = !!wantChecked[opt];
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(" " + opt));
+      fieldset.appendChild(label);
     });
   }
 
@@ -76,7 +111,14 @@
     }
     if (sheetNames.length) {
       form.querySelectorAll('select[data-source="sheets"]').forEach(function (sel) {
-        rebuildSelect(sel, sheetNames, suggestions[sel.name], subs);
+        var optional = sel.dataset.optional === "true";
+        var opts = optional ? [""].concat(sheetNames) : sheetNames;
+        var labels = optional ? {"": "(none)"} : null;
+        rebuildSelect(sel, opts, suggestions[sel.name], subs, labels);
+      });
+      form.querySelectorAll("fieldset[data-checklist-name]").forEach(function (fieldset) {
+        var name = fieldset.getAttribute("data-checklist-name");
+        rebuildChecklist(fieldset, sheetNames, suggestions[name], name);
       });
     }
 
@@ -137,5 +179,16 @@
   fileInput.addEventListener("change", function () { analyze(false); });
   form.querySelectorAll("select[data-analyze]").forEach(function (sel) {
     sel.addEventListener("change", function () { analyze(false); });
+  });
+
+  // Checkboxes inside a checklist fieldset are created/destroyed by
+  // rebuildChecklist on every analyze response, so a listener bound to one
+  // instance wouldn't survive the next rebuild -- delegate on the fieldset
+  // itself instead (matches the "no per-checkbox listeners" note in the
+  // design doc).
+  form.querySelectorAll("fieldset[data-checklist-name]").forEach(function (fieldset) {
+    fieldset.addEventListener("change", function (e) {
+      if (e.target && e.target.type === "checkbox") analyze(false);
+    });
   });
 })();

@@ -9,3 +9,6 @@ label { display: block; margin-top: 0.5rem; }
 .categories .hint { flex-basis: 100%; color: #666; font-size: 0.9em; margin: 0.5rem 0 0; }
 .warn-banner { background: #fff3cd; border: 1px solid #ffca2c; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; font-size: 0.9em; }
 select { font: inherit; margin-top: 0.25rem; }
+.sheet-checklist { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; border: 1px solid #ccc; padding: 0.5rem 0.75rem; }
+.sheet-checkbox { display: flex; align-items: center; gap: 0.4rem; width: 220px; margin-top: 0.25rem; }
+.sheet-checklist .hint { flex-basis: 100%; color: #666; font-size: 0.9em; margin: 0.5rem 0 0; }
