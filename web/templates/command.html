@@ -1,10 +1,5 @@
 {% extends "base.html" %}
 {% block title %}{{ spec.title }} - bigmedia{% endblock %}
-{% block nav %}
-<nav>
-  {% for slug, s in commands.items() %}<a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a>{% endfor %}
-</nav>
-{% endblock %}
 {% block error %}
 {% if error %}<p class="error-banner">{{ error }}</p>{% endif %}
 {% endblock %}
@@ -87,10 +82,12 @@
   <label>File(s)
     <input type="file" name="files" multiple required accept=".xlsx">
   </label>
-  <button type="submit" name="intent" value="run">Run {{ spec.title }}</button>
-  <input type="text" name="preset_name" placeholder="Preset name">
-  <label><input type="checkbox" name="overwrite"> Overwrite</label>
-  <button type="submit" name="intent" value="save_preset" formaction="/presets/{{ spec.slug }}" formnovalidate>Save as preset</button>
+  <div class="form-actions">
+    <button type="submit" name="intent" value="run" class="btn-primary">Run {{ spec.title }}</button>
+    <input type="text" name="preset_name" placeholder="Preset name">
+    <label class="inline-checkbox"><input type="checkbox" name="overwrite"> Overwrite</label>
+    <button type="submit" name="intent" value="save_preset" formaction="/presets/{{ spec.slug }}" formnovalidate>Save as preset</button>
+  </div>
 </form>
 <script src="/static/analyze.js"></script>
 {% endblock %}

@@ -17,7 +17,7 @@ from bigmedia.group_duplicates import group_duplicates_workbook
 
 from web.analyze import run_analysis
 from web.auth import RedirectToLogin, check_password, require_login
-from web.commands import COMMANDS, SORT_CATEGORIES
+from web.commands import COMMANDS, IN_PROGRESS_SLUGS, SORT_CATEGORIES
 from web.files import parse_field, reject_non_xlsx, zip_files
 from web.presets import PresetExistsError, delete_preset, get_preset, init_db, list_presets, save_preset
 
@@ -39,6 +39,7 @@ app.add_middleware(
     secret_key=session_secret,
 )
 templates = Jinja2Templates(directory=APP_DIR / "templates")
+templates.env.globals["IN_PROGRESS_SLUGS"] = IN_PROGRESS_SLUGS
 
 logger = logging.getLogger(__name__)
 

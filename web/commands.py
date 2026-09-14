@@ -35,6 +35,7 @@ class CommandSpec:
     func: Callable
     fields: list
     output_suffix: str
+    description: str = ""
     analyze: Callable = None
 
 
@@ -46,6 +47,7 @@ COMMANDS = {
     "sort": CommandSpec(
         slug="sort", title="Sort", upload_mode="batch", func=sort_workbook,
         output_suffix="sorted", analyze=analyze_sort,
+        description="Split a raw delivery file into category sheets — AP, Getty, Reuters, and the rest.",
         fields=[
             _NAME_COLUMN,
             FieldSpec("categories", "Categories to keep (comma-separated, blank = all)", "list"),
@@ -55,11 +57,13 @@ COMMANDS = {
     "dedupe": CommandSpec(
         slug="dedupe", title="Dedupe", upload_mode="batch", func=dedupe_workbook,
         output_suffix="deduped",
+        description="Remove duplicate clips from a sorted sheet.",
         fields=[_NAME_COLUMN],
     ),
     "group": CommandSpec(
         slug="group", title="Group", upload_mode="batch", func=group_duplicates_workbook,
         output_suffix="grouped",
+        description="Combine duplicate clips into one row with total duration.",
         fields=[
             FieldSpec("name_column", "Filename column", "text", "Clip Name",
                       options_source="headers", sheet_source=["sheets"]),
@@ -72,6 +76,7 @@ COMMANDS = {
     "fu-grid": CommandSpec(
         slug="fu-grid", title="FU Grid", upload_mode="batch", func=fu_grid_workbook,
         output_suffix="fu_grid",
+        description="Build the legal follow-up grid from a sorted sheet's 3rd-party clips.",
         fields=[
             FieldSpec("sheet", "Source sheet", "text", "3rd parties", options_source="sheets"),
             FieldSpec("name_column", "Filename column", "text", "Clip Name",
@@ -84,6 +89,7 @@ COMMANDS = {
     "compare": CommandSpec(
         slug="compare", title="Compare", upload_mode="pair", func=compare_workbooks,
         output_suffix="vs_old",
+        description="Diff two versions of the same episode, category by category.",
         fields=[
             _NAME_COLUMN,
             FieldSpec("case_sensitive", "Case-sensitive filename match", "checkbox", False),
@@ -93,6 +99,7 @@ COMMANDS = {
     "fix-getty": CommandSpec(
         slug="fix-getty", title="Fix Getty split", upload_mode="fix_getty", func=fix_getty_split,
         output_suffix="getty_fixed",
+        description="Re-file Getty clips wrongly split between Videos and Stills.",
         fields=[
             _NAME_COLUMN, _DURATION_COLUMN, _FPS,
             FieldSpec("no_group", "Skip re-grouping after fix", "checkbox", False),
@@ -101,6 +108,7 @@ COMMANDS = {
     "getty-ids": CommandSpec(
         slug="getty-ids", title="Getty IDs", upload_mode="combine", func=build_getty_id_report,
         output_suffix="getty_ids",
+        description="Pull Getty clip IDs into a declaration report, split by video and stills.",
         fields=[
             FieldSpec("project_name", "Project name", "text", required=True),
             FieldSpec("sheet_name", "Video sheet name", "text", "Getty Videos",
@@ -123,3 +131,7 @@ COMMANDS = {
 # it's the always-on fallback sheet and can't be turned off (matches the
 # CLI's own resolve_categories() rule).
 SORT_CATEGORIES = [c for c in CATEGORY_ORDER if c != DEFAULT]
+
+# Commands still being shaken out -- shown in their own muted group in the
+# nav and on the home page rather than mixed in with the main set.
+IN_PROGRESS_SLUGS = {"dedupe", "compare", "fix-getty"}

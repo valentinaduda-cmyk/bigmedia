@@ -2,9 +2,21 @@
 {% block title %}bigmedia{% endblock %}
 {% block content %}
 <h2>Commands</h2>
-<ul>
-  {% for slug, s in commands.items() %}
-  <li><a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a></li>
+<ul class="command-list">
+  {% for slug, s in commands.items() if slug not in IN_PROGRESS_SLUGS %}
+  <li>
+    <a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a>
+    {% if s.description %}<p>{{ s.description }}</p>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+<h2 class="section-label">In progress</h2>
+<ul class="command-list command-list-muted">
+  {% for slug, s in commands.items() if slug in IN_PROGRESS_SLUGS %}
+  <li>
+    <a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a>
+    {% if s.description %}<p>{{ s.description }}</p>{% endif %}
+  </li>
   {% endfor %}
 </ul>
 {% endblock %}
