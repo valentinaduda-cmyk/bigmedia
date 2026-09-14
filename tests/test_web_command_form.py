@@ -42,7 +42,8 @@ def test_fu_grid_sheet_field_is_sheet_select(monkeypatch):
     assert 'data-source="sheets"' in html
 
 
-def test_group_sheets_field_stays_text_for_now(monkeypatch):
-    # group's multi-value "sheets" field is deferred until group's analyzer
+def test_group_sheets_field_is_sheet_select(monkeypatch):
+    # group's "sheets" field is now a sheet_checklist with select dropdown
     html = _client(monkeypatch).get("/commands/group").text
-    assert '<input type="text" name="sheets"' in html
+    assert '<select name="sheets"' in html
+    assert 'data-source="sheets"' in html

@@ -15,10 +15,16 @@ from bigmedia.sort_workbook import sort_workbook, analyze_sort
 class FieldSpec:
     name: str
     label: str
-    type: str  # "text" | "number" | "checkbox" | "list"
+    type: str  # "text" | "number" | "checkbox" | "list" | "sheet_checklist"
     default: Any = None
     required: bool = False
     options_source: str = None  # None | "headers" | "sheets"
+    sheet_source: list = None  # field name(s) whose current sheet
+                                # selection scopes a "headers" field's
+                                # options (group/fu-grid/getty-ids only)
+    allow_missing_sheet: bool = False  # "sheets"-sourced fields only:
+                                        # True allows an empty "(none)"
+                                        # selection (getty-ids' stills sheet)
 
 
 @dataclass
@@ -55,8 +61,12 @@ COMMANDS = {
         slug="group", title="Group", upload_mode="batch", func=group_duplicates_workbook,
         output_suffix="grouped",
         fields=[
-            _NAME_COLUMN, _DURATION_COLUMN, _FPS,
-            FieldSpec("sheets", "Sheets to group (comma-separated, blank = default set)", "list"),
+            FieldSpec("name_column", "Filename column", "text", "Clip Name",
+                      options_source="headers", sheet_source=["sheets"]),
+            FieldSpec("duration_column", "Duration column", "text", "Clip Duration",
+                      options_source="headers", sheet_source=["sheets"]),
+            _FPS,
+            FieldSpec("sheets", "Sheets to group", "sheet_checklist", options_source="sheets"),
         ],
     ),
     "fu-grid": CommandSpec(
@@ -64,7 +74,11 @@ COMMANDS = {
         output_suffix="fu_grid",
         fields=[
             FieldSpec("sheet", "Source sheet", "text", "3rd parties", options_source="sheets"),
-            _NAME_COLUMN, _DURATION_COLUMN, _FPS,
+            FieldSpec("name_column", "Filename column", "text", "Clip Name",
+                      options_source="headers", sheet_source=["sheet"]),
+            FieldSpec("duration_column", "Duration column", "text", "Clip Duration",
+                      options_source="headers", sheet_source=["sheet"]),
+            _FPS,
         ],
     ),
     "compare": CommandSpec(
@@ -89,10 +103,14 @@ COMMANDS = {
         output_suffix="getty_ids",
         fields=[
             FieldSpec("project_name", "Project name", "text", required=True),
-            FieldSpec("sheet_name", "Video sheet name", "text", "Getty Videos"),
-            FieldSpec("stills_sheet_name", "Stills sheet name", "text", "Getty Stills"),
-            _NAME_COLUMN,
-            FieldSpec("seconds_column", "Seconds column", "text", "Seconds"),
+            FieldSpec("sheet_name", "Video sheet name", "text", "Getty Videos",
+                      options_source="sheets"),
+            FieldSpec("stills_sheet_name", "Stills sheet name", "text", "Getty Stills",
+                      options_source="sheets", allow_missing_sheet=True),
+            FieldSpec("name_column", "Filename column", "text", "Clip Name",
+                      options_source="headers", sheet_source=["sheet_name", "stills_sheet_name"]),
+            FieldSpec("seconds_column", "Seconds column", "text", "Seconds",
+                      options_source="headers", sheet_source=["sheet_name", "stills_sheet_name"]),
             FieldSpec("min_seconds", "Min seconds (videos only)", "number", 5),
             FieldSpec("max_seconds", "Max seconds (videos only, blank = no limit)", "number"),
             FieldSpec("include_video", "Include video clips", "checkbox", True),
