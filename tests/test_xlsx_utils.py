@@ -274,10 +274,10 @@ def test_sheet_warnings_disagreement_scoped_to_that_sheet(tmp_path):
     a = _make(tmp_path / "ep1.xlsx", {"Getty Videos": [["Clip Name", "Seconds"]], "COST": [["EP1"]]})
     b = _make(tmp_path / "ep2.xlsx", {"Getty Videos": [["Name"]], "COST": [["EP2"]]})
     result = analyze_files([a, b])
-    # Active-sheet (COST) headers agree in shape ("EP1" vs "EP2" are both
-    # single-header sheets) -> no generic warning; the Getty Videos
-    # disagreement only shows up in sheet_warnings.
-    assert not result["warnings"]
+    # Active sheet is Getty Videos (first created): ["Clip Name", "Seconds"] vs ["Name"]
+    # These differ -> generic warning is generated
+    assert any("ep2.xlsx" in w and "differ" in w for w in result["warnings"])
+    # Additionally, per-sheet warnings are generated for Getty Videos disagreement
     assert any("ep2.xlsx" in w and "Getty Videos" in w and "differ" in w
                for w in result["sheet_warnings"]["Getty Videos"])
 

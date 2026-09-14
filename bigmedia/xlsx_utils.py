@@ -373,13 +373,11 @@ def analyze_files(paths):
                     seen_headers.add(h)
                     headers.append(h)
 
-            # Only check active sheet headers for consistency if the file has a single sheet
-            if len(wb.sheetnames) == 1:
-                if first_header_set is None:
-                    first_header_set = set(file_headers)
-                    first_name = name
-                elif set(file_headers) != first_header_set:
-                    warnings.append(f"{name}: columns differ from {first_name}")
+            if first_header_set is None:
+                first_header_set = set(file_headers)
+                first_name = name
+            elif set(file_headers) != first_header_set:
+                warnings.append(f"{name}: columns differ from {first_name}")
 
             for title in wb.sheetnames:
                 ws = wb[title]
