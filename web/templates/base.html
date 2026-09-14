@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}bigmedia{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,25 +9,39 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <a class="wordmark" href="/">bigmedia</a>
-    {% if commands %}
-    <nav>
-      {% for slug, s in commands.items() if slug not in IN_PROGRESS_SLUGS %}
-      <a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}"{% if request.url.path.startswith('/commands/' ~ slug) %} class="active"{% endif %}>{{ s.title }}</a>
-      {% endfor %}
-      <span class="nav-group">
-        <span class="nav-label">In progress</span>
-        {% for slug, s in commands.items() if slug in IN_PROGRESS_SLUGS %}
-        <a href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}"{% if request.url.path.startswith('/commands/' ~ slug) %} class="active"{% endif %}>{{ s.title }}</a>
-        {% endfor %}
-      </span>
-    </nav>
-    {% endif %}
-  </header>
-  {% block error %}{% endblock %}
-  <main>
-    {% block content %}{% endblock %}
+{% if commands %}
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="wordmark" href="/">bigmedia</a>
+      <nav>
+        <div class="nav-section">
+          {% for slug, s in commands.items() if slug not in IN_PROGRESS_SLUGS %}
+          <a class="nav-item{% if request.url.path.startswith('/commands/' ~ slug) %} active{% endif %}"
+             href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a>
+          {% endfor %}
+        </div>
+        <div class="nav-section">
+          <p class="nav-section-label">In progress</p>
+          {% for slug, s in commands.items() if slug in IN_PROGRESS_SLUGS %}
+          <a class="nav-item nav-item-muted{% if request.url.path.startswith('/commands/' ~ slug) %} active{% endif %}"
+             href="/commands/{{ slug }}{% if s.upload_mode in ('pair', 'fix_getty') %}/pair{% endif %}">{{ s.title }}</a>
+          {% endfor %}
+        </div>
+      </nav>
+    </aside>
+    <div class="page">
+      <main>
+{% else %}
+  <main class="plain">
+{% endif %}
+        {% block error %}{% endblock %}
+        {% block content %}{% endblock %}
+{% if commands %}
+      </main>
+    </div>
+  </div>
+{% else %}
   </main>
+{% endif %}
 </body>
 </html>
