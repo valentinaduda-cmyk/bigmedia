@@ -304,6 +304,23 @@ def style_output_sheets(sheets, *, width_by, data_font):
         apply_header_style(ws)
 
 
+def match_sheet_name(sheet_names, target, aliases=()):
+    """Case-insensitive match of `target` against `sheet_names`, falling
+    back through `aliases` (alternate names to try, in order) when `target`
+    itself doesn't match anything. Returns the real sheet name (original
+    casing, from `sheet_names`) or None. Centralizes the
+    match-case-insensitively-then-try-aliases pattern every command that
+    hunts for a named sheet (Getty Videos, Getty Stills, 3rd parties, ...)
+    already implements ad hoc."""
+    candidates = [target] + [a for a in aliases if a.strip().lower() != target.strip().lower()]
+    lookup = {name.strip().lower(): name for name in sheet_names}
+    for candidate in candidates:
+        match = lookup.get(candidate.strip().lower())
+        if match:
+            return match
+    return None
+
+
 def analyze_files(paths):
     """Read-only inspection of one or more clip-list workbooks, for the web
     UI's analyze-and-suggest step. Returns the union of the active sheets'
@@ -311,6 +328,15 @@ def analyze_files(paths):
     across files, and warnings for files that won't open or whose columns
     disagree with the first readable file. Never raises for a bad file --
     it lands in "warnings" and the others are still processed.
+
+    Also returns per-sheet data for commands that read a specific named
+    sheet rather than "whatever tab was active when the file was last
+    saved" (group/fu-grid/getty-ids): `headers_by_sheet` (union of headers
+    per sheet, across every file that has that sheet), `sheet_warnings`
+    (per-sheet disagreement/missing-file warnings), and
+    `unreadable_warnings` (just the "could not read" subset of `warnings`,
+    since those are relevant regardless of which sheet a command cares
+    about).
 
     Header values are stringified (``str(value).strip()``) so a stray
     ``datetime``/number cell in row 1 still yields a JSON-serializable
@@ -322,12 +348,20 @@ def analyze_files(paths):
     sheet_rows = {}
     sheet_order = []
     warnings = []
+    unreadable_warnings = []
+
+    file_names = []
+    sheet_key_by_lower = {}          # sheet title lowercased -> canonical (first-seen) title
+    headers_by_sheet = {}            # canonical title -> [headers...] (union, first-seen order)
+    seen_headers_by_sheet = {}       # canonical title -> set(headers already added)
+    sheet_occurrences = {}           # canonical title -> [(file_name, set(headers)), ...]
 
     for path in paths:
         name = Path(path).name
         wb = None
         try:
             wb = load_workbook(path, read_only=True, data_only=True)
+            file_names.append(name)
 
             active = wb.active
             file_headers = [
@@ -339,14 +373,30 @@ def analyze_files(paths):
                     seen_headers.add(h)
                     headers.append(h)
 
-            if first_header_set is None:
-                first_header_set = set(file_headers)
-                first_name = name
-            elif set(file_headers) != first_header_set:
-                warnings.append(f"{name}: columns differ from {first_name}")
+            # Only check active sheet headers for consistency if the file has a single sheet
+            if len(wb.sheetnames) == 1:
+                if first_header_set is None:
+                    first_header_set = set(file_headers)
+                    first_name = name
+                elif set(file_headers) != first_header_set:
+                    warnings.append(f"{name}: columns differ from {first_name}")
 
             for title in wb.sheetnames:
                 ws = wb[title]
+                canonical = sheet_key_by_lower.setdefault(title.strip().lower(), title)
+
+                sheet_headers = [
+                    str(c.value).strip() for c in next(ws.iter_rows(min_row=1, max_row=1), [])
+                    if c.value is not None and str(c.value).strip() != ""
+                ]
+                bucket = headers_by_sheet.setdefault(canonical, [])
+                seen_for_sheet = seen_headers_by_sheet.setdefault(canonical, set())
+                for h in sheet_headers:
+                    if h not in seen_for_sheet:
+                        seen_for_sheet.add(h)
+                        bucket.append(h)
+                sheet_occurrences.setdefault(canonical, []).append((name, set(sheet_headers)))
+
                 rows = ws.max_row
                 if rows is None:
                     rows = sum(1 for _ in ws.iter_rows())
@@ -357,13 +407,31 @@ def analyze_files(paths):
                 sheet_rows[title] += count
 
         except Exception as exc:  # openpyxl raises several unrelated types
-            warnings.append(f"{name}: could not read ({exc})")
+            msg = f"{name}: could not read ({exc})"
+            warnings.append(msg)
+            unreadable_warnings.append(msg)
         finally:
             if wb is not None:
                 wb.close()
 
+    sheet_warnings = {}
+    for canonical, occurrences in sheet_occurrences.items():
+        msgs = []
+        first_file, first_headers = occurrences[0]
+        present_files = {fn for fn, _ in occurrences}
+        for fn, hset in occurrences[1:]:
+            if hset != first_headers:
+                msgs.append(f"{fn}: '{canonical}' sheet columns differ from {first_file}")
+        for fn in file_names:
+            if fn not in present_files:
+                msgs.append(f"{fn}: '{canonical}' sheet not found")
+        sheet_warnings[canonical] = msgs
+
     return {
         "headers": headers,
+        "headers_by_sheet": headers_by_sheet,
+        "sheet_warnings": sheet_warnings,
         "sheets": [{"name": t, "rows": sheet_rows[t]} for t in sheet_order],
         "warnings": warnings,
+        "unreadable_warnings": unreadable_warnings,
     }

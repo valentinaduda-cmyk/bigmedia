@@ -4,7 +4,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from bigmedia.xlsx_utils import (
-    analyze_files,
+    analyze_files, match_sheet_name,
     HEADER_FILL, apply_header_style, sample_data_font, first_data_font,
     style_output_sheets, measure_column_widths,
     AUTOFIT_MIN_WIDTH, AUTOFIT_MAX_WIDTH, AUTOFIT_PADDING,
@@ -220,3 +220,83 @@ def test_is_backup_sheet_matches_worksheet_and_dump_tabs():
     assert is_backup_sheet("Copy of Sheet1")
     assert not is_backup_sheet("Getty Videos")
     assert not is_backup_sheet("3rd parties")
+
+
+def test_match_sheet_name_case_insensitive():
+    assert match_sheet_name(["Getty Videos", "COST"], "getty videos") == "Getty Videos"
+
+
+def test_match_sheet_name_strips_whitespace():
+    assert match_sheet_name([" Getty Videos "], "Getty Videos") == " Getty Videos "
+
+
+def test_match_sheet_name_falls_back_to_alias():
+    assert match_sheet_name(["Getty pics"], "Getty Stills", aliases=("Getty pics",)) == "Getty pics"
+
+
+def test_match_sheet_name_prefers_target_over_alias():
+    names = ["Getty Stills", "Getty pics"]
+    assert match_sheet_name(names, "Getty Stills", aliases=("Getty pics",)) == "Getty Stills"
+
+
+def test_match_sheet_name_no_match_returns_none():
+    assert match_sheet_name(["COST", "worksheet"], "Getty Videos") is None
+
+
+def test_headers_by_sheet_per_sheet_not_just_active(tmp_path):
+    # Active sheet is "COST" (first sheet created); "Getty Videos" is a
+    # different, non-active sheet -- headers_by_sheet must still cover it.
+    a = _make(tmp_path / "a.xlsx", {
+        "COST": [["EP1"]],
+        "Getty Videos": [["Track", "Clip Name", "Seconds"], ["V1", "x.mov", 6]],
+    })
+    result = analyze_files([a])
+    assert result["headers"] == ["EP1"]  # unchanged: active-sheet only
+    assert result["headers_by_sheet"]["COST"] == ["EP1"]
+    assert result["headers_by_sheet"]["Getty Videos"] == ["Track", "Clip Name", "Seconds"]
+
+
+def test_headers_by_sheet_unions_across_files_same_sheet_name(tmp_path):
+    a = _make(tmp_path / "a.xlsx", {"Getty Videos": [["Clip Name", "Seconds"]]})
+    b = _make(tmp_path / "b.xlsx", {"Getty Videos": [["Clip Name", "Notes"]]})
+    result = analyze_files([a, b])
+    assert result["headers_by_sheet"]["Getty Videos"] == ["Clip Name", "Seconds", "Notes"]
+
+
+def test_headers_by_sheet_keyed_by_first_seen_casing(tmp_path):
+    a = _make(tmp_path / "a.xlsx", {"Getty Videos": [["Clip Name"]]})
+    b = _make(tmp_path / "b.xlsx", {"getty videos": [["Clip Name"]]})
+    result = analyze_files([a, b])
+    assert list(result["headers_by_sheet"].keys()) == ["Getty Videos"]
+
+
+def test_sheet_warnings_disagreement_scoped_to_that_sheet(tmp_path):
+    a = _make(tmp_path / "ep1.xlsx", {"Getty Videos": [["Clip Name", "Seconds"]], "COST": [["EP1"]]})
+    b = _make(tmp_path / "ep2.xlsx", {"Getty Videos": [["Name"]], "COST": [["EP2"]]})
+    result = analyze_files([a, b])
+    # Active-sheet (COST) headers agree in shape ("EP1" vs "EP2" are both
+    # single-header sheets) -> no generic warning; the Getty Videos
+    # disagreement only shows up in sheet_warnings.
+    assert not result["warnings"]
+    assert any("ep2.xlsx" in w and "Getty Videos" in w and "differ" in w
+               for w in result["sheet_warnings"]["Getty Videos"])
+
+
+def test_sheet_warnings_not_found_lists_the_missing_file(tmp_path):
+    a = _make(tmp_path / "ep1.xlsx", {"Getty Videos": [["Clip Name"]], "Getty Stills": [["Clip Name"]]})
+    b = _make(tmp_path / "ep2.xlsx", {"Getty Videos": [["Clip Name"]]})  # no stills sheet
+    result = analyze_files([a, b])
+    assert any("ep2.xlsx" in w and "Getty Stills" in w and "not found" in w
+               for w in result["sheet_warnings"]["Getty Stills"])
+    assert "Getty Videos" not in "".join(result["sheet_warnings"].get("Getty Videos", []))
+
+
+def test_unreadable_warnings_is_the_could_not_read_subset(tmp_path):
+    good = _make(tmp_path / "good.xlsx", {"S": [["Clip Name"], ["x"]]})
+    bad = tmp_path / "bad.xlsx"
+    bad.write_bytes(b"not a real xlsx")
+    result = analyze_files([str(bad), good])
+    assert len(result["unreadable_warnings"]) == 1
+    assert "bad.xlsx" in result["unreadable_warnings"][0]
+    assert "could not read" in result["unreadable_warnings"][0]
+    assert result["unreadable_warnings"] == result["warnings"]
