@@ -48,11 +48,18 @@
       {% endfor %}
       <p class="hint">"3rd parties" is always included — clips from any turned-off category land there for manual review.</p>
     </fieldset>
+    {% elif f.type == "sheet_checklist" %}
+    <fieldset class="sheet-checklist" data-analyze data-source="sheets" data-checklist-name="{{ f.name }}">
+      <legend>{{ f.label }}</legend>
+      <input type="hidden" name="{{ f.name }}_present" value="1">
+      <p class="hint">Upload a file to see its sheets.</p>
+    </fieldset>
     {% elif f.options_source %}
     <label>
       {{ f.label }}{% if f.required %} (required){% endif %}
       {% set current = (values or {}).get(f.name, f.default) %}
-      <select name="{{ f.name }}" data-analyze data-source="{{ f.options_source }}">
+      <select name="{{ f.name }}" data-analyze data-source="{{ f.options_source }}"
+              {% if f.allow_missing_sheet %}data-optional="true"{% endif %}>
         <option value="{{ current if current is not none else '' }}" selected>{{ current if current is not none else '(pick a file)' }}</option>
       </select>
     </label>

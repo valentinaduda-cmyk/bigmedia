@@ -1,4 +1,15 @@
+from fastapi.testclient import TestClient
+
+from web.auth import hash_password
 from web.commands import COMMANDS, SORT_CATEGORIES
+from web.main import app
+
+
+def _logged_in_client(monkeypatch):
+    monkeypatch.setenv("BIGMEDIA_WEB_PASSWORD_HASH", hash_password("pw"))
+    client = TestClient(app)
+    client.post("/login", data={"password": "pw"})
+    return client
 
 
 def test_all_seven_commands_registered():
@@ -100,3 +111,28 @@ def test_sort_and_dedupe_fields_declare_no_sheet_source():
     for slug in ("sort", "dedupe"):
         for f in COMMANDS[slug].fields:
             assert not f.sheet_source
+
+
+def test_group_page_renders_sheet_checklist_fieldset(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+    response = client.get("/commands/group")
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-checklist-name="sheets"' in body
+    assert 'name="sheets_present"' in body
+
+
+def test_getty_ids_page_renders_sheet_name_dropdowns(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+    response = client.get("/commands/getty-ids")
+    assert response.status_code == 200
+    body = response.text
+    assert 'name="sheet_name"' in body and 'data-source="sheets"' in body
+    assert 'data-optional="true"' in body  # stills_sheet_name only
+
+
+def test_fu_grid_page_still_renders_plain_sheets_select(monkeypatch):
+    client = _logged_in_client(monkeypatch)
+    response = client.get("/commands/fu-grid")
+    assert response.status_code == 200
+    assert 'name="sheet"' in response.text
