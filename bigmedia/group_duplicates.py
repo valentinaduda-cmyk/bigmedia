@@ -240,7 +240,7 @@ def group_duplicates_workbook(
     duration_column="Clip Duration",
     fps=25,
 ):
-    sheets = sheets or DEFAULT_SHEETS
+    sheets = DEFAULT_SHEETS if sheets is None else sheets
     wanted = {s.strip().lower() for s in sheets}
     for base, aliases in SHEET_ALIASES.items():
         if base in wanted:

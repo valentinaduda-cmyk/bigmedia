@@ -389,3 +389,16 @@ def test_group_does_not_style_raw_backup_dump_tab(tmp_path):
     dump = load_workbook(out_path)["EP01 - Master XML"]
     assert dump.cell(row=1, column=1).fill.fgColor.rgb != "FF000000"
     assert dump.cell(row=1, column=1).value == "raw dump line, not a header"
+
+
+def test_empty_sheets_list_groups_nothing(sample_sorted_master, tmp_path):
+    out_path = tmp_path / "out.xlsx"
+    group_duplicates_workbook(str(sample_sorted_master), str(out_path), sheets=[])
+
+    wb = load_workbook(out_path)
+    ws = wb["Getty Videos"]
+    # No grouping happened: no Total Duration/Seconds columns were inserted,
+    # unlike test_group_duplicates_reorders_and_sums_getty_videos above.
+    header_row = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
+    assert "Total Duration" not in header_row
+    assert "Seconds" not in header_row
