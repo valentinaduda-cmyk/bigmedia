@@ -10,8 +10,8 @@ def parse_field(field, raw):
     if field.type == "checkbox":
         return bool(raw)
     if raw is None or raw == "" or raw == []:
-        return None if field.type in ("list", "number") else (field.default or "")
-    if field.type == "list":
+        return None if field.type in ("list", "sheet_checklist", "number") else (field.default or "")
+    if field.type in ("list", "sheet_checklist"):
         if isinstance(raw, list):
             parts = [p.strip() for p in raw if p.strip()]
         else:

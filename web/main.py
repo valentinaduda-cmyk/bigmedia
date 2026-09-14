@@ -80,10 +80,10 @@ def _command_or_404(slug: str):
 
 def _build_kwargs(form, fields) -> dict:
     """Read one value per field from a submitted form, using getlist() for
-    "list"-type fields so multiple same-named inputs (checkboxes) all
-    survive instead of only the first/last one."""
+    "list"/"sheet_checklist" fields so multiple same-named inputs
+    (checkboxes) all survive instead of only the first/last one."""
     return {
-        f.name: parse_field(f, form.getlist(f.name) if f.type == "list" else form.get(f.name))
+        f.name: parse_field(f, form.getlist(f.name) if f.type in ("list", "sheet_checklist") else form.get(f.name))
         for f in fields
     }
 
@@ -202,6 +202,14 @@ async def command_submit(request: Request, slug: str, files: List[UploadFile] = 
         and not kwargs.get("skip_categories")
     ):
         kwargs["skip_categories"] = list(SORT_CATEGORIES)
+
+    # Mirrors the categories_present marker above: group's sheet checklist
+    # auto-unchecks nothing on its own, but a user who deliberately
+    # unchecks every box should get "group nothing," not silently fall
+    # back to DEFAULT_SHEETS (parse_field turns an empty submitted list
+    # into None, indistinguishable from "field omitted" without this).
+    if spec.slug == "group" and form.get("sheets_present") and not kwargs.get("sheets"):
+        kwargs["sheets"] = []
 
     bad = reject_non_xlsx([f.filename for f in files])
     if bad:
