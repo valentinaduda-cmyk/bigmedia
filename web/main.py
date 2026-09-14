@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from bigmedia.getty_ids import getty_ids_filename
 from bigmedia.group_duplicates import group_duplicates_workbook
 
 from web.analyze import run_analysis
@@ -246,8 +247,9 @@ def _run_combine(request: Request, spec, files, tmp_dir, kwargs):
     input_dir = tmp_dir / "input"
     input_dir.mkdir()
     _save_uploads(files, input_dir)
-    out_path = tmp_dir / f"{spec.output_suffix}.xlsx"
     project_name = kwargs.pop("project_name")
+    out_name = getty_ids_filename(project_name) if spec.slug == "getty-ids" else f"{spec.output_suffix}.xlsx"
+    out_path = tmp_dir / out_name
     try:
         spec.func(str(input_dir), str(out_path), project_name, **kwargs)
     except Exception as exc:

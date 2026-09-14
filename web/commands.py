@@ -89,9 +89,6 @@ COMMANDS = {
         output_suffix="getty_ids",
         fields=[
             FieldSpec("project_name", "Project name", "text", required=True),
-            FieldSpec("production_company", "Production company", "text", "KM Record a.s./Big Media"),
-            FieldSpec("broadcaster", "Broadcaster", "text", ""),
-            FieldSpec("rights", "Rights requested", "text", "in perpetuity/worldwide/all media"),
             FieldSpec("sheet_name", "Video sheet name", "text", "Getty Videos"),
             FieldSpec("stills_sheet_name", "Stills sheet name", "text", "Getty Stills"),
             _NAME_COLUMN,

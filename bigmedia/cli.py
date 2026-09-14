@@ -6,7 +6,7 @@ Usage:
                     [--categories "AP,Getty Videos" | --skip-categories "FOX,Veritone"]
     bigmedia dedupe <input.xlsx|folder> [-o output] [--name-column "Clip Name"]
     bigmedia group  <sorted.xlsx|folder> [-o output] [--fps 25]
-    bigmedia getty-ids <folder|sorted.xlsx> [-o output.xlsx]
+    bigmedia getty-ids <folder|sorted.xlsx> --project-name "Name" [-o output.xlsx]
     bigmedia fu-grid <sorted.xlsx|folder> [-o output] [--sheet "3rd parties"] [--fps 25]
     bigmedia compare <old.xlsx|folder> <new.xlsx|folder> [-o output]
     bigmedia fix-getty <old folder|file> <new sorted folder|file> [-o output folder] [--no-group]
@@ -33,11 +33,11 @@ input workbook (matched case-insensitively; "Getty pics" is recognized as
 an alias for the stills sheet automatically, customizable via
 --sheet/--stills-sheet for other naming), keeps only unique video clips
 with total duration >= --min-seconds (stills are never duration-filtered),
-extracts each clip's Getty id from its filename, and writes one Customer
-Declaration Form-styled report (--project-name is required;
---production-company, --broadcaster, --rights fill the rest of the form's
-header). --videos-only/--stills-only restrict extraction to one sheet
-(default: both).
+extracts each clip's Getty id from its filename, and writes a report with
+videos and stills on separate sheets (--project-name is required and is
+also used in the default output filename, "<project name> - Getty_IDs.xlsx").
+A clip type's sheet is omitted entirely if it has no clips at all.
+--videos-only/--stills-only restrict extraction to one sheet (default: both).
 
 "fu-grid" builds the legal follow-up grid from a sorted workbook's "3rd
 parties" sheet: one row per clip (matched by exact clip name), with how
@@ -71,7 +71,7 @@ from pathlib import Path
 from .sort_workbook import sort_workbook
 from .dedupe import dedupe_workbook
 from .group_duplicates import group_duplicates_workbook
-from .getty_ids import build_getty_id_report
+from .getty_ids import build_getty_id_report, getty_ids_filename
 from .fu_grid import fu_grid_workbook
 from .compare_versions import compare_workbooks
 from .getty_split import fix_getty_split, pair_by_episode
@@ -236,18 +236,15 @@ def cmd_getty_ids(args):
     input_path = Path(args.input)
     if args.output:
         out_path = args.output
-    elif input_path.is_dir():
-        out_path = str(input_path / "getty_ids.xlsx")
     else:
-        out_path = _default_output(input_path, "getty_ids")
+        out_dir = input_path if input_path.is_dir() else input_path.parent
+        out_path = str(out_dir / getty_ids_filename(args.project_name))
 
     counts = build_getty_id_report(
         str(input_path), out_path, args.project_name,
         sheet_name=args.sheet, stills_sheet_name=args.stills_sheet,
         name_column=args.name_column, seconds_column=args.seconds_column,
         min_seconds=args.min_seconds, max_seconds=args.max_seconds,
-        production_company=args.production_company,
-        broadcaster=args.broadcaster, rights=args.rights,
         include_video=not args.stills_only, include_stills=not args.videos_only,
     )
     print(f"Wrote {out_path}")
@@ -310,13 +307,10 @@ def build_parser():
     p_fix.add_argument("--fps", type=int, default=25, help="Frame rate used when re-grouping (default: 25)")
     p_fix.set_defaults(func=cmd_fix_getty)
 
-    p_getty = subparsers.add_parser("getty-ids", help="Extract Getty clip ids from several sorted workbooks into a Customer Declaration Form report")
+    p_getty = subparsers.add_parser("getty-ids", help="Extract Getty clip ids from several sorted workbooks into a Getty IDs report")
     p_getty.add_argument("input", help="Path to a folder of sorted .xlsx files (or a single file)")
-    p_getty.add_argument("-o", "--output", help="Output report path (default: <input folder>/getty_ids.xlsx)")
-    p_getty.add_argument("--project-name", required=True, help="Project Name for the form's header (required)")
-    p_getty.add_argument("--production-company", default="KM Record a.s./Big Media", help='Production Company for the form\'s header (default: "KM Record a.s./Big Media")')
-    p_getty.add_argument("--broadcaster", default="", help="Broadcaster for the form's header (default: blank)")
-    p_getty.add_argument("--rights", default="in perpetuity/worldwide/all media", help='Rights Requested for the form\'s header (default: "in perpetuity/worldwide/all media")')
+    p_getty.add_argument("-o", "--output", help='Output report path (default: <input folder>/"<project name> - Getty_IDs.xlsx")')
+    p_getty.add_argument("--project-name", required=True, help="Project Name for the report's header and default filename (required)")
     p_getty.add_argument("--sheet", default="Getty Videos", help='Sheet to read video clip names from, matched case-insensitively (default: "Getty Videos")')
     p_getty.add_argument("--stills-sheet", default="Getty Stills", help='Sheet to read stills clip names from, matched case-insensitively (default: "Getty Stills")')
     p_getty.add_argument("--name-column", default="Clip Name", help='Header of the filename column (default: "Clip Name")')

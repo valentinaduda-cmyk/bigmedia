@@ -44,4 +44,4 @@ def test_getty_ids_combines_multiple_files_into_one_report(monkeypatch):
         "/commands/getty-ids", data={"project_name": "Test Project"}, files=files
     )
     assert response.status_code == 200
-    assert response.headers["content-disposition"].endswith('"getty_ids.xlsx"')
+    assert response.headers["content-disposition"].endswith('"Test Project - Getty_IDs.xlsx"')
